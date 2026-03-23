@@ -1,11 +1,11 @@
 # agent-tally.nvim
 
-A Neovim plugin and system-wide daemon that tracks AI token utilization across Neovim and CLI tools (Copilot, Claude Code, Aider, etc.).
+A Neovim plugin and system-wide daemon that tracks AI token usage for your current project directory. Monitors files read (tokens in) and written (tokens out) by AI coding assistants like Claude Code, Aider, Cursor, Copilot, and more.
 
 ## Requirements
 
 - Neovim >= 0.10
-- Go >= 1.21 (only needed to build the daemon; SQLite is embedded, no system dependency)
+- Go >= 1.21 
 
 ## Installation
 
@@ -56,16 +56,42 @@ This produces `sidecar/build/agent-tallyd`.
 ### 3. Install the daemon binary
 
 ```sh
-make install
+sudo make install
 ```
 
-This copies `agent-tallyd` to `~/.local/bin/`. Make sure `~/.local/bin` is in your `$PATH`.
+This copies `agent-tallyd` to `/usr/local/bin/` (requires root).
 
-Alternatively, copy the binary anywhere on your `$PATH`:
+If you don't have root access, install to your user bin instead:
 
 ```sh
-cp sidecar/build/agent-tallyd /usr/local/bin/
+mkdir -p ~/.local/bin
+cp sidecar/build/agent-tallyd ~/.local/bin/agent-tallyd
 ```
+
+Then make sure `~/.local/bin` is in your `$PATH` 
+- You can add `export PATH="$HOME/.local/bin:$PATH"` to your shell rc file.
+
+## Compatible AI Agents
+
+The following agents are monitored by default. Use `:AgentTallyWatchlist` to enable/disable individual tools.
+
+| Agent | Process Name |
+|-------|-------------|
+| [Claude Code](https://claude.ai/code) | `claude` |
+| [Aider](https://aider.chat) | `aider` |
+| [OpenAI Codex](https://openai.com/codex) | `codex` |
+| [Cursor](https://cursor.sh) | `cursor` | 
+| [GitHub Copilot](https://github.com/features/copilot) | `copilot` |
+
+Any other CLI tool can be added via `:AgentTallyWatchlist`, just enter the process name as it appears in `ps`.
+
+## How It Works
+
+Agent Tally monitors file changes in your watched directories. When an AI tool writes to a file:
+- **Tokens In**: Estimated tokens the AI read from the existing file content
+- **Tokens Out**: Estimated tokens the AI generated and wrote to the file
+
+> **Note**: Token counts are estimates based on file size changes (~4 bytes per token). They represent file-level I/O only and do not include conversation context, system prompts, or extended thinking tokens that AI models may use internally.
 
 ## Usage
 
@@ -78,7 +104,8 @@ cp sidecar/build/agent-tallyd /usr/local/bin/
 | `:AgentTallyStop`      | Stop the sidecar daemon                  |
 | `:AgentTallyStatus`    | Show daemon status and watchlist         |
 | `:AgentTallyWatchlist` | Toggle which AI tools to monitor         |
-| `:AgentTallyClear`     | Clear all recorded events (with confirm) |
+| `:AgentTallyClean`     | Clean recorded events in the current directory | 
+| `:AgentTallyCleanAll`     | Clean all recorded events |
 
 ### Running the daemon standalone
 

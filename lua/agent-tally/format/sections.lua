@@ -3,7 +3,7 @@ local u = require("agent-tally.format.util")
 local M = {}
 
 --- Overview: daemon info + token summary.
-function M.overview(status, events)
+function M.overview(status, events, cwd)
   events = events or {}
   local lines = {}
   local hls = {}
@@ -11,11 +11,10 @@ function M.overview(status, events)
   local ap = status.active_processes or {}
   local ap_val = #ap > 0 and table.concat(ap, ", ") or "(none detected)"
 
-  u.labeled_line(lines, hls, "Status",    status.status or "unknown",                   "AgentTallySection1")
-  u.labeled_line(lines, hls, "Database",  status.db_path or "n/a",                      "AgentTallySection1")
-  u.labeled_line(lines, hls, "Watchlist", table.concat(status.watchlist or {}, ", "),   "AgentTallySection1")
-  u.labeled_line(lines, hls, "Paths",     table.concat(status.watch_paths or {}, ", "), "AgentTallySection1")
-  u.labeled_line(lines, hls, "Active",    ap_val,                                        "AgentTallySection1")
+  u.labeled_line(lines, hls, "Status",    status.status or "unknown",                 "AgentTallySection1")
+  u.labeled_line(lines, hls, "Watchlist", table.concat(status.watchlist or {}, ", "), "AgentTallySection1")
+  u.labeled_line(lines, hls, "Path",      cwd or table.concat(status.watch_paths or {}, ", "), "AgentTallySection1")
+  u.labeled_line(lines, hls, "Active",    ap_val,                                     "AgentTallySection1")
 
   table.insert(lines, "")
 

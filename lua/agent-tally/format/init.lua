@@ -7,7 +7,7 @@ local M = {}
 ---@param status table
 ---@param events table[]
 ---@return string[], table
-function M.dashboard(status, events)
+function M.dashboard(status, events, cwd)
   events = events or {}
   local all_lines = {}
   local all_hls   = {}
@@ -24,7 +24,7 @@ function M.dashboard(status, events)
     end
   end
 
-  append(sections.overview(status, events))
+  append(sections.overview(status, events, cwd))
   append({ "" }, {})
   append(sections.by_process(events))
   append({ "" }, {})
@@ -40,8 +40,9 @@ function M.dashboard(status, events)
 end
 
 -- Re-export detail formatters.
-M.event_detail = detail.event
-M.file_detail  = detail.file
+M.event_detail   = detail.event
+M.file_detail    = detail.file
+M.process_detail = detail.process
 
 -- Re-export full-table formatters.
 M.all_files  = sections.all_files

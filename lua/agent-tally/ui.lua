@@ -334,6 +334,7 @@ function M.open()
 
   -- Fetch data
   local socket = config.current.socket_path
+  local cwd = vim.fn.getcwd()
   local status_result = nil
   local events_result = nil
   local got_error = false
@@ -362,7 +363,7 @@ function M.open()
       state.events_cache = events
 
       -- Build dashboard lines + highlights
-      local lines, hls = format.dashboard(status, state.events_cache)
+      local lines, hls = format.dashboard(status, state.events_cache, cwd)
       state.current_hls = hls
 
       -- Set on_enter to drill into both recent events and by-file rows.
@@ -383,6 +384,27 @@ function M.open()
               push_view(detail_lines, "Event Detail", nil, detail_hls)
               return
             end
+          end
+        end
+
+        -- Try to match a process name (By Process table row).
+        -- Process names are simple identifiers with no path separators or timestamps.
+        -- Match the first column against known process names in the events cache.
+        local first_word = trimmed:match("^(%S+)")
+
+        if first_word and not first_word:match("[/~%.]") and not ts then
+          local proc_set = {}
+
+          for _, ev in ipairs(state.events_cache) do
+            if ev.process_name and ev.process_name ~= "" then
+              proc_set[ev.process_name] = true
+            end
+          end
+
+          if proc_set[first_word] then
+            local detail_lines, detail_hls = format.process_detail(first_word, state.events_cache)
+            push_view(detail_lines, first_word .. " Detail", nil, detail_hls)
+            return
           end
         end
 
@@ -433,6 +455,9 @@ function M.open()
     end)
   end
 
+  -- Ensure the daemon watches the current directory (no-op if already watched).
+  rpc.request(socket, "watch-add", { path = cwd }, function() end)
+
   rpc.request(socket, "status", nil, function(err, result)
     if err then
       got_error = true
@@ -459,7 +484,7 @@ function M.open()
     try_render()
   end)
 
-  rpc.request(socket, "query", { Limit = 100 }, function(err, result)
+  rpc.request(socket, "query", { Limit = 100, path_prefix = cwd }, function(err, result)
     if err then
       -- Still call try_render so the loading screen resolves.
       -- The status error handler (if it fired) already set got_error.

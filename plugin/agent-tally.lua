@@ -45,3 +45,11 @@ end, { desc = "Configure agent-tally watchlist" })
 vim.api.nvim_create_user_command("AgentTallyClear", function()
   require("agent-tally").clear()
 end, { desc = "Clear all agent-tally events from the database" })
+
+vim.api.nvim_create_user_command("AgentTallyClean", function()
+  require("agent-tally").clean()
+end, { desc = "Clear agent-tally events for the current directory" })
+
+vim.api.nvim_create_user_command("AgentTallyCleanAll", function()
+  require("agent-tally").clean_all()
+end, { desc = "Clear all agent-tally events from the database" })
