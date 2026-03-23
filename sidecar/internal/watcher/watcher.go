@@ -1,8 +1,9 @@
 package watcher
 
 import (
-	"context"
 	"time"
+
+	"github.com/kaileying/agent-tally.nvim/sidecar/internal/config"
 )
 
 // Event represents a detected file-write event.
@@ -15,9 +16,9 @@ type Event struct {
 
 // Watcher monitors file-system write events and emits them to a channel.
 type Watcher interface {
-	// Start begins monitoring the given paths and sends events to the channel.
+	// Start begins monitoring and sends events to the channel.
 	// It blocks until the context is cancelled or an error occurs.
-	Start(ctx context.Context, paths []string, events chan<- Event) error
+	Start(cfg *config.Config, events chan<- Event) error
 
 	// Stop terminates monitoring and releases resources.
 	Stop() error

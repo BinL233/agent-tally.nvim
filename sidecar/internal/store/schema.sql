@@ -5,8 +5,7 @@ CREATE TABLE IF NOT EXISTS events (
     process_name   TEXT    NOT NULL,
     file_path      TEXT    NOT NULL,
     tokens_input   INTEGER NOT NULL DEFAULT 0,
-    tokens_output  INTEGER NOT NULL DEFAULT 0,
-    mcp_skill_used TEXT    NOT NULL DEFAULT ''
+    tokens_output  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);

@@ -1,12 +1,11 @@
 # agent-tally.nvim
 
-A Neovim plugin and system-wide daemon that tracks AI token utilization and skill usage across Neovim and CLI tools (Copilot, Claude Code, Aider, etc.).
+A Neovim plugin and system-wide daemon that tracks AI token utilization across Neovim and CLI tools (Copilot, Claude Code, Aider, etc.).
 
 ## Requirements
 
-- Neovim >= 0.10 
-- Go >= 1.21
-- SQLite
+- Neovim >= 0.10
+- Go >= 1.21 (only needed to build the daemon; SQLite is embedded, no system dependency)
 
 ## Installation
 
@@ -72,20 +71,37 @@ cp sidecar/build/agent-tallyd /usr/local/bin/
 
 ### Commands
 
-| Command             | Description                          |
-|---------------------|--------------------------------------|
-| `:AgentTallyStart`  | Start the sidecar daemon             |
-| `:AgentTallyStop`   | Stop the sidecar daemon              |
-| `:AgentTallyStatus` | Show daemon status and watchlist     |
-| `:AgentTally`       | Open the tally dashboard             |
+| Command                | Description                              |
+|------------------------|------------------------------------------|
+| `:AgentTally`          | Open the dashboard (auto-starts daemon)  |
+| `:AgentTallyStart`     | Start the sidecar daemon manually        |
+| `:AgentTallyStop`      | Stop the sidecar daemon                  |
+| `:AgentTallyStatus`    | Show daemon status and watchlist         |
+| `:AgentTallyWatchlist` | Toggle which AI tools to monitor         |
+| `:AgentTallyClear`     | Clear all recorded events (with confirm) |
 
 ### Running the daemon standalone
 
 ```sh
-agent-tallyd                          # uses default paths
-agent-tallyd --db ~/my-events.db      # custom database location
-agent-tallyd --socket /tmp/my.sock    # custom socket path
+agent-tallyd                                    # watch cwd, default settings
+agent-tallyd --watch ~/projects                 # watch a specific directory
+agent-tallyd --watch ~/proj1,~/proj2            # watch multiple directories
+agent-tallyd --depth 5                          # limit recursive depth
+agent-tallyd --db ~/my-events.db                # custom database location
+agent-tallyd --socket /tmp/my.sock              # custom socket path
 ```
+
+### Dashboard keybindings
+
+| Key         | Action                                          |
+|-------------|-------------------------------------------------|
+| `q` / `Esc` | Close dashboard                                 |
+| `r`         | Refresh data                                    |
+| `G`         | Grep / filter entries                           |
+| `Enter`     | Drill into detail (event, file, or full table)  |
+| `Backspace` | Go back to previous view                        |
+| `Ctrl-j`    | Next entry                                      |
+| `Ctrl-k`    | Previous entry                                  |
 
 ### Configuration
 
@@ -97,11 +113,32 @@ require("agent-tally").setup({
   -- UNIX socket path, must match the daemon's --socket flag
   socket_path = (os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/agent-tally.sock",
 
+  -- PID file path used to prevent duplicate daemon instances
+  pid_file = (os.getenv("XDG_RUNTIME_DIR") or "/tmp") .. "/agent-tally.pid",
+
   -- Auto-start the daemon when Neovim opens (default: false)
   auto_start = false,
 
   -- Status line format (%t = total tokens, %p = process name)
   statusline_format = " [AT: %t tokens]",
+
+  -- UI options
+  ui = {
+    width = 0.8,        -- 80% of editor width
+    height = 0.8,       -- 80% of editor height
+    border = "rounded", -- border style
+  },
+
+  -- Dashboard keymaps (all customizable)
+  keymaps = {
+    close = { "q", "<Esc>" },
+    drill_down = "<CR>",
+    back = "<BS>",
+    next_entry = "<C-j>",
+    prev_entry = "<C-k>",
+    grep = "G",
+    refresh = "r",
+  },
 })
 ```
 

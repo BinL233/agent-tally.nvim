@@ -6,15 +6,20 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/kaileying/agent-tally.nvim/sidecar/internal/config"
 )
 
-// LinuxWatcher uses fsnotify (inotify) for file-write detection on Linux.
-// Future: replace with eBPF kprobes on vfs_write for PID-level attribution.
+// LinuxWatcher uses fsnotify (inotify) with recursive directory walking.
 type LinuxWatcher struct {
 	watcher *fsnotify.Watcher
+	ctx     context.Context
+	cancel  context.CancelFunc
 }
 
 // NewPlatformWatcher creates a new Linux file-system watcher.
@@ -23,28 +28,63 @@ func NewPlatformWatcher() (Watcher, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create fsnotify watcher: %w", err)
 	}
-	return &LinuxWatcher{watcher: w}, nil
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	return &LinuxWatcher{
+		watcher: w,
+		ctx:     ctx,
+		cancel:  cancel,
+	}, nil
 }
 
-// Start begins monitoring paths for write events. It blocks until ctx is cancelled.
-func (l *LinuxWatcher) Start(ctx context.Context, paths []string, events chan<- Event) error {
-	for _, p := range paths {
-		if err := l.watcher.Add(p); err != nil {
-			log.Printf("warn: cannot watch %s: %v", p, err)
-		}
+// Start begins monitoring paths for write events. It blocks until stopped.
+func (l *LinuxWatcher) Start(cfg *config.Config, events chan<- Event) error {
+	excludeSet := make(map[string]bool, len(cfg.ExcludeDirs))
+
+	for _, dir := range cfg.ExcludeDirs {
+		excludeSet[dir] = true
+	}
+
+	for _, root := range cfg.WatchPaths {
+		count := addRecursive(l.watcher, root, excludeSet, cfg.MaxDepth)
+		log.Printf("watching %s (%d dirs)", root, count)
 	}
 
 	for {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-l.ctx.Done():
+			return l.ctx.Err()
 
 		case ev, ok := <-l.watcher.Events:
 			if !ok {
 				return nil
 			}
 
+			if ev.Op&fsnotify.Create != 0 {
+				info, err := os.Stat(ev.Name)
+
+				if err == nil && info.IsDir() {
+					base := filepath.Base(ev.Name)
+
+					if !excludeSet[base] {
+						addRecursive(l.watcher, ev.Name, excludeSet, cfg.MaxDepth)
+					}
+
+					continue
+				}
+			}
+
 			if ev.Op&(fsnotify.Write|fsnotify.Create) == 0 {
+				continue
+			}
+
+			if strings.HasPrefix(filepath.Base(ev.Name), ".") {
+				continue
+			}
+
+			info, err := os.Stat(ev.Name)
+			if err != nil || info.IsDir() {
 				continue
 			}
 
@@ -65,5 +105,6 @@ func (l *LinuxWatcher) Start(ctx context.Context, paths []string, events chan<- 
 
 // Stop closes the underlying fsnotify watcher.
 func (l *LinuxWatcher) Stop() error {
+	l.cancel()
 	return l.watcher.Close()
 }
