@@ -126,7 +126,7 @@ function M.open()
       end
 
       -- Build items: all known defaults + whatever daemon has.
-      local defaults = { "aider", "claude", "codex", "copilot", "cursor" }
+      local defaults = { "aider", "claude", "copilot", "cursor" }
       local active = {}
 
       if type(result) == "table" then

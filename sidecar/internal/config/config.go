@@ -44,7 +44,6 @@ func Default() *Config {
 		Watchlist: []string{
 			"aider",
 			"claude",
-			"codex",
 			"copilot",
 			"cursor",
 		},

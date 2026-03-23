@@ -159,13 +159,23 @@ func (s *Scanner) scan() {
 			name = name[idx+1:]
 		}
 
-		if wl[name] {
+		// If comm doesn't match, fall back to the real executable name.
+		// Some programs (e.g. Python-based tools) rename their thread to
+		// something like "MainThread", hiding the binary name from comm.
+		matchName := name
+		if !wl[name] {
+			if exe := resolveExeName(pid); exe != "" && wl[exe] {
+				matchName = exe
+			}
+		}
+
+		if wl[matchName] {
 			// Reuse cached CWD if available, only resolve for new PIDs.
 			cwd, cached := s.cwdCache[pid]
 			if !cached {
 				cwd = resolveCWD(pid)
 			}
-			found = append(found, ProcessInfo{PID: pid, Name: name, CWD: cwd})
+			found = append(found, ProcessInfo{PID: pid, Name: matchName, CWD: cwd})
 			newCache[pid] = cwd
 		}
 	}

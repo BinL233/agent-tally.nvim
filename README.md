@@ -48,7 +48,7 @@ lua require("agent-tally").setup()
 
 ```sh
 cd ~/.local/share/nvim/lazy/agent-tally.nvim  # or wherever your plugin manager clones to
-make build
+make build  # Go required
 ```
 
 This produces `sidecar/build/agent-tallyd`.
@@ -60,6 +60,7 @@ sudo make install
 ```
 
 This copies `agent-tallyd` to `/usr/local/bin/` (requires root).
+Alternative: `sudo cp sidecar/build/agent-tallyd /usr/local/bin/`
 
 If you don't have root access, install to your user bin instead:
 
@@ -79,7 +80,6 @@ The following agents are monitored by default. Use `:AgentTallyWatchlist` to ena
 |-------|-------------|
 | [Claude Code](https://claude.ai/code) | `claude` |
 | [Aider](https://aider.chat) | `aider` |
-| [OpenAI Codex](https://openai.com/codex) | `codex` |
 | [Cursor](https://cursor.sh) | `cursor` | 
 | [GitHub Copilot](https://github.com/features/copilot) | `copilot` |
 
@@ -168,6 +168,10 @@ require("agent-tally").setup({
   },
 })
 ```
+
+## TODO
+
+- [ ] avante.nvim integration
 
 ## License
 [MIT](LICENSE)

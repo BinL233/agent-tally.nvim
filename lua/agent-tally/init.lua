@@ -15,9 +15,6 @@ function M.setup(opts)
     M.start_daemon()
   end
 
-  -- Load AI plugin hooks (no-op if plugins aren't installed).
-  require("agent-tally.hooks.avante").setup()
-
   -- On exit, remove the current directory from the daemon's watch list.
   vim.api.nvim_create_autocmd("VimLeavePre", {
     once = true,
