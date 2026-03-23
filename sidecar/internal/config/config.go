@@ -43,9 +43,11 @@ func Default() *Config {
 	return &Config{
 		Watchlist: []string{
 			"aider",
-			"copilot-agent",
 			"claude",
+			"codex",
+			"copilot-agent",
 			"cursor",
+			"gemini",
 		},
 		WatchPaths: []string{cwd},
 		ExcludeDirs: []string{
