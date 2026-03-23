@@ -2,6 +2,7 @@ local M = {}
 
 local config = require("agent-tally.config")
 local rpc = require("agent-tally.rpc")
+local ui = require("agent-tally.ui")
 
 local daemon_handle = nil
 
@@ -74,13 +75,18 @@ function M.status()
   end)
 end
 
+--- Open the tally dashboard.
+function M.dashboard()
+  ui.open()
+end
+
 --- Handle the :AgentTally command.
 ---@param opts table
 function M.command(opts)
   local subcmd = opts.fargs[1] or "dashboard"
 
   if subcmd == "dashboard" then
-    M.status()
+    M.dashboard()
   elseif subcmd == "start" then
     M.start_daemon()
   elseif subcmd == "stop" then

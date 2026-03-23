@@ -12,7 +12,11 @@ function M.request(socket_path, method, params, callback)
 
   client:connect(socket_path, function(err)
     if err then
-      callback("connect: " .. err, nil)
+      local msg = "connect: " .. err
+      if err:match("ENOENT") then
+        msg = "Daemon is not running. Start it with :AgentTallyStart"
+      end
+      callback(msg, nil)
       return
     end
 
