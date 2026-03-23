@@ -10,4 +10,5 @@ clean:
 	rm -rf sidecar/build
 
 install: build
+	mkdir -p ~/.local/bin
 	cp $(BINARY) ~/.local/bin/agent-tallyd
