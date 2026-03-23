@@ -66,6 +66,10 @@ func (s *SQLiteStore) Query(ctx context.Context, filter QueryFilter) ([]Event, e
 		q += " AND process_name = ?"
 		args = append(args, filter.ProcessName)
 	}
+	if filter.PathPrefix != "" {
+		q += " AND file_path GLOB ?"
+		args = append(args, filter.PathPrefix+"/*")
+	}
 	if filter.Since != nil {
 		q += " AND timestamp >= ?"
 		args = append(args, filter.Since.UTC().Format("2006-01-02T15:04:05.000"))
@@ -112,7 +116,10 @@ func (s *SQLiteStore) QueryByFile(ctx context.Context, filter QueryFilter) ([]Fi
 		q += " AND process_name = ?"
 		args = append(args, filter.ProcessName)
 	}
-
+	if filter.PathPrefix != "" {
+		q += " AND file_path GLOB ?"
+		args = append(args, filter.PathPrefix+"/*")
+	}
 	if filter.Since != nil {
 		q += " AND timestamp >= ?"
 		args = append(args, filter.Since.UTC().Format("2006-01-02T15:04:05.000"))
@@ -155,6 +162,15 @@ func (s *SQLiteStore) ClearAll(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM events")
 	if err != nil {
 		return fmt.Errorf("clear events: %w", err)
+	}
+	return nil
+}
+
+// ClearByPath deletes all events whose file_path falls under pathPrefix.
+func (s *SQLiteStore) ClearByPath(ctx context.Context, pathPrefix string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM events WHERE file_path GLOB ?", pathPrefix+"/*")
+	if err != nil {
+		return fmt.Errorf("clear events by path: %w", err)
 	}
 	return nil
 }

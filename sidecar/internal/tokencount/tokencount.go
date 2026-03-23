@@ -1,7 +1,9 @@
 package tokencount
 
 import (
+	"io/fs"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -59,6 +61,37 @@ func (e *Estimator) Estimate(filePath string) Delta {
 		TokensInput:  bytesToTokens(prevSize),
 		TokensOutput: bytesToTokens(diff),
 	}
+}
+
+// SnapshotDir walks dir, skipping excludeDirs, and records the current size of
+// every file so that the first write to each file produces a non-zero TokensInput.
+// Safe to call before or after the watcher starts — it never overwrites an existing snapshot.
+func (e *Estimator) SnapshotDir(dir string, excludeDirs map[string]bool) {
+	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		if d.IsDir() {
+			if excludeDirs[d.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+
+		e.mu.Lock()
+		if _, exists := e.snapshots[path]; !exists {
+			e.snapshots[path] = info.Size()
+		}
+		e.mu.Unlock()
+
+		return nil
+	})
 }
 
 // bytesToTokens converts a byte count to estimated tokens (~4 bytes per token).

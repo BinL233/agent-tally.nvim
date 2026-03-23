@@ -22,4 +22,10 @@ type Watcher interface {
 
 	// Stop terminates monitoring and releases resources.
 	Stop() error
+
+	// AddPath adds a new root directory to the active watcher.
+	AddPath(path string, cfg *config.Config) error
+
+	// RemovePath removes a previously-added root directory and all its subdirectories.
+	RemovePath(path string) error
 }

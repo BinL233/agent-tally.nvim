@@ -5,6 +5,7 @@ package watcher
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -115,5 +116,29 @@ func (d *DarwinWatcher) Start(cfg *config.Config, events chan<- Event) error {
 func (d *DarwinWatcher) Stop() error {
 	d.cancel()
 	return d.watcher.Close()
+}
+
+// AddPath adds a new root directory and its subdirectories to the active watcher.
+func (d *DarwinWatcher) AddPath(path string, cfg *config.Config) error {
+	excludeSet := make(map[string]bool, len(cfg.ExcludeDirs))
+	for _, dir := range cfg.ExcludeDirs {
+		excludeSet[dir] = true
+	}
+	count := addRecursive(d.watcher, path, excludeSet, cfg.MaxDepth)
+	log.Printf("watch-add %s (%d dirs)", path, count)
+	return nil
+}
+
+// RemovePath removes a root directory and all its subdirectories from the active watcher.
+func (d *DarwinWatcher) RemovePath(path string) error {
+	filepath.WalkDir(path, func(p string, entry fs.DirEntry, err error) error {
+		if err != nil || !entry.IsDir() {
+			return nil
+		}
+		d.watcher.Remove(p)
+		return nil
+	})
+	log.Printf("watch-remove %s", path)
+	return nil
 }
 

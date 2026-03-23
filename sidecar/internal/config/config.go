@@ -45,9 +45,8 @@ func Default() *Config {
 			"aider",
 			"claude",
 			"codex",
-			"copilot-agent",
+			"copilot",
 			"cursor",
-			"gemini",
 		},
 		WatchPaths: []string{cwd},
 		ExcludeDirs: []string{

@@ -81,18 +81,29 @@ func (s *Scanner) UpdateWatchlist(names []string) {
 // Attribute finds which watchlist process is most likely responsible for
 // a file write at the given path. Uses CWD-based matching: the process
 // whose CWD is the longest prefix of filePath wins.
+// When multiple processes tie on CWD length, returns the first found.
+// Use AttributeAll to get all tied candidates for further disambiguation.
 func (s *Scanner) Attribute(filePath string) ProcessInfo {
+	candidates := s.AttributeAll(filePath)
+
+	if len(candidates) == 0 {
+		return ProcessInfo{}
+	}
+
+	return candidates[0]
+}
+
+// AttributeAll returns all watchlist processes whose CWD is the longest
+// matching prefix of filePath. Usually one result; multiple means a tie
+// (e.g. two tools running in the same directory).
+func (s *Scanner) AttributeAll(filePath string) []ProcessInfo {
 	s.mu.RLock()
 	procs := make([]ProcessInfo, len(s.running))
 	copy(procs, s.running)
 	s.mu.RUnlock()
 
-	if len(procs) == 0 {
-		return ProcessInfo{}
-	}
-
 	cleanPath := filepath.Clean(filePath)
-	var best ProcessInfo
+	var matches []ProcessInfo
 	bestLen := 0
 
 	for _, p := range procs {
@@ -102,16 +113,17 @@ func (s *Scanner) Attribute(filePath string) ProcessInfo {
 
 		cleanCWD := filepath.Clean(p.CWD)
 
-		// Check if the file is under this process's CWD.
 		if strings.HasPrefix(cleanPath, cleanCWD+"/") || cleanPath == cleanCWD {
 			if len(cleanCWD) > bestLen {
-				best = p
+				matches = []ProcessInfo{p}
 				bestLen = len(cleanCWD)
+			} else if len(cleanCWD) == bestLen {
+				matches = append(matches, p)
 			}
 		}
 	}
 
-	return best
+	return matches
 }
 
 // scan queries the system for running processes matching the watchlist.

@@ -19,6 +19,7 @@ type Event struct {
 // QueryFilter controls which events are returned by Query.
 type QueryFilter struct {
 	ProcessName string     `json:"process_name"`
+	PathPrefix  string     `json:"path_prefix"`
 	Since       *time.Time `json:"since"`
 	Limit       int        `json:"limit"`
 }
@@ -46,6 +47,9 @@ type Store interface {
 
 	// ClearAll deletes all events from the store.
 	ClearAll(ctx context.Context) error
+
+	// ClearByPath deletes all events whose file_path falls under pathPrefix.
+	ClearByPath(ctx context.Context, pathPrefix string) error
 
 	// Close releases database resources.
 	Close() error
