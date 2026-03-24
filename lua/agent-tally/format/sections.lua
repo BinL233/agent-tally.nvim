@@ -3,7 +3,7 @@ local u = require("agent-tally.format.util")
 local M = {}
 
 --- Overview: daemon info + token summary.
-function M.overview(status, events)
+function M.overview(status, events, cwd)
   events = events or {}
   local lines = {}
   local hls = {}
@@ -11,11 +11,10 @@ function M.overview(status, events)
   local ap = status.active_processes or {}
   local ap_val = #ap > 0 and table.concat(ap, ", ") or "(none detected)"
 
-  u.labeled_line(lines, hls, "Status",    status.status or "unknown",                   "AgentTallySection1")
-  u.labeled_line(lines, hls, "Database",  status.db_path or "n/a",                      "AgentTallySection1")
-  u.labeled_line(lines, hls, "Watchlist", table.concat(status.watchlist or {}, ", "),   "AgentTallySection1")
-  u.labeled_line(lines, hls, "Paths",     table.concat(status.watch_paths or {}, ", "), "AgentTallySection1")
-  u.labeled_line(lines, hls, "Active",    ap_val,                                        "AgentTallySection1")
+  u.labeled_line(lines, hls, "Status",    status.status or "unknown",                 "AgentTallySection1")
+  u.labeled_line(lines, hls, "Watchlist", table.concat(status.watchlist or {}, ", "), "AgentTallySection1")
+  u.labeled_line(lines, hls, "Path",      cwd or table.concat(status.watch_paths or {}, ", "), "AgentTallySection1")
+  u.labeled_line(lines, hls, "Active",    ap_val,                                     "AgentTallySection1")
 
   table.insert(lines, "")
 
@@ -174,10 +173,6 @@ function M.all_files(events)
   table.insert(hls, { hdr, 0, -1, "AgentTallySection5" })
   table.insert(hls, { sep, 0, -1, "AgentTallySection5" })
 
-  table.insert(lines, "")
-  table.insert(hls, { #lines, 0, -1, "AgentTallyHint" })
-  table.insert(lines, "  <BS> back  q close")
-
   return lines, hls
 end
 
@@ -232,9 +227,73 @@ function M.all_events(events)
   table.insert(hls, { hdr, 0, -1, "AgentTallySection4" })
   table.insert(hls, { sep, 0, -1, "AgentTallySection4" })
 
-  table.insert(lines, "")
-  table.insert(hls, { #lines, 0, -1, "AgentTallyHint" })
-  table.insert(lines, "  <BS> back  q close")
+  return lines, hls
+end
+
+--- By-tool breakdown table. tool_data is []{ tool_name, count, agent }.
+--- Shows max 10 rows; if truncated, appends a "more tools" hint.
+function M.by_tool(tool_data)
+  tool_data = tool_data or {}
+
+  local lines = {}
+  local hls   = {}
+
+  if #tool_data == 0 then
+    return lines, hls
+  end
+
+  local rows = { { "Tool", "Count", "Agent" } }
+  local show = math.min(#tool_data, 10)
+
+  for i = 1, show do
+    local s = tool_data[i]
+    table.insert(rows, {
+      s.tool_name or "(unknown)",
+      u.format_number(s.count or 0),
+      s.agent or "",
+    })
+  end
+
+  local out_lines, hdr, sep = u.align(rows, { "l", "r", "l" })
+  lines = out_lines
+
+  table.insert(hls, { hdr, 0, -1, "AgentTallySection6" })
+  table.insert(hls, { sep, 0, -1, "AgentTallySection6" })
+
+  if #tool_data > show then
+    table.insert(lines, "")
+    table.insert(lines, "  → and " .. (#tool_data - show) .. " more tools — press <CR> to view all")
+  end
+
+  return lines, hls
+end
+
+--- Full tool breakdown table (no row limit).
+function M.all_tools(tool_data)
+  tool_data = tool_data or {}
+
+  local lines = {}
+  local hls   = {}
+
+  if #tool_data == 0 then
+    return lines, hls
+  end
+
+  local rows = { { "Tool", "Count", "Agent" } }
+
+  for _, s in ipairs(tool_data) do
+    table.insert(rows, {
+      s.tool_name or "(unknown)",
+      u.format_number(s.count or 0),
+      s.agent or "",
+    })
+  end
+
+  local out_lines, hdr, sep = u.align(rows, { "l", "r", "l" })
+  lines = out_lines
+
+  table.insert(hls, { hdr, 0, -1, "AgentTallySection6" })
+  table.insert(hls, { sep, 0, -1, "AgentTallySection6" })
 
   return lines, hls
 end

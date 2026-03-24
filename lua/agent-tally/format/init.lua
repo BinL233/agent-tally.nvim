@@ -6,8 +6,10 @@ local M = {}
 --- Format the full dashboard. Returns (lines, hls).
 ---@param status table
 ---@param events table[]
+---@param cwd string
+---@param tools table[]
 ---@return string[], table
-function M.dashboard(status, events)
+function M.dashboard(status, events, cwd, tools)
   events = events or {}
   local all_lines = {}
   local all_hls   = {}
@@ -24,27 +26,37 @@ function M.dashboard(status, events)
     end
   end
 
-  append(sections.overview(status, events))
+  append(sections.overview(status, events, cwd))
   append({ "" }, {})
   append(sections.by_process(events))
   append({ "" }, {})
+
   append(sections.by_file(events))
+  append({ "" }, {})
+
+  local tool_lines, tool_hls = sections.by_tool(tools)
+  if #tool_lines > 0 then
+    append(tool_lines, tool_hls)
+    append({ "" }, {})
+  end
+
+
   append({ "" }, {})
   append(sections.recent_events(events))
 
-  local hint_row = #all_lines + 1
-  append({ "", "  q close  r refresh  G grep  <CR> details  <BS> back" }, {})
-  table.insert(all_hls, { hint_row, 0, -1, "AgentTallyHint" })
+  append({ "" }, {})
 
   return all_lines, all_hls
 end
 
 -- Re-export detail formatters.
-M.event_detail = detail.event
-M.file_detail  = detail.file
+M.event_detail   = detail.event
+M.file_detail    = detail.file
+M.process_detail = detail.process
 
 -- Re-export full-table formatters.
-M.all_files  = sections.all_files
-M.all_events = sections.all_events
+M.all_files   = sections.all_files
+M.all_events  = sections.all_events
+M.all_tools  = sections.all_tools
 
 return M

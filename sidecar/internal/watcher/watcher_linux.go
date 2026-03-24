@@ -5,6 +5,7 @@ package watcher
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -107,4 +108,28 @@ func (l *LinuxWatcher) Start(cfg *config.Config, events chan<- Event) error {
 func (l *LinuxWatcher) Stop() error {
 	l.cancel()
 	return l.watcher.Close()
+}
+
+// AddPath adds a new root directory and its subdirectories to the active watcher.
+func (l *LinuxWatcher) AddPath(path string, cfg *config.Config) error {
+	excludeSet := make(map[string]bool, len(cfg.ExcludeDirs))
+	for _, dir := range cfg.ExcludeDirs {
+		excludeSet[dir] = true
+	}
+	count := addRecursive(l.watcher, path, excludeSet, cfg.MaxDepth)
+	log.Printf("watch-add %s (%d dirs)", path, count)
+	return nil
+}
+
+// RemovePath removes a root directory and all its subdirectories from the active watcher.
+func (l *LinuxWatcher) RemovePath(path string) error {
+	filepath.WalkDir(path, func(p string, entry fs.DirEntry, err error) error {
+		if err != nil || !entry.IsDir() {
+			return nil
+		}
+		l.watcher.Remove(p)
+		return nil
+	})
+	log.Printf("watch-remove %s", path)
+	return nil
 }

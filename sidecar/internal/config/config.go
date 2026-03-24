@@ -3,11 +3,12 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // Config holds the daemon configuration.
 type Config struct {
-	// Watchlist is the set of process names to monitor (e.g., "nvim", "aider", "copilot-agent").
+	// Watchlist is the set of process names to monitor (e.g., "claude", "copilot-agent").
 	Watchlist []string
 
 	// WatchPaths is the list of directory paths to monitor for file-write events.
@@ -27,6 +28,9 @@ type Config struct {
 
 	// MaxDepth limits how deep recursive directory walking goes (0 = unlimited).
 	MaxDepth int
+
+	// LogScanInterval controls how often AI agent log files are scanned for skill events.
+	LogScanInterval time.Duration
 }
 
 // Default returns a Config with sensible defaults.
@@ -42,9 +46,8 @@ func Default() *Config {
 
 	return &Config{
 		Watchlist: []string{
-			"aider",
-			"copilot-agent",
 			"claude",
+			"copilot",
 			"cursor",
 		},
 		WatchPaths: []string{cwd},
@@ -56,7 +59,8 @@ func Default() *Config {
 		DBPath:     filepath.Join(dataDir, "agent-tally", "events.db"),
 		SocketPath: filepath.Join(runtimeDir, "agent-tally.sock"),
 		PIDFile:    filepath.Join(runtimeDir, "agent-tally.pid"),
-		MaxDepth:   10,
+		MaxDepth:        10,
+		LogScanInterval: 5 * time.Second,
 	}
 }
 

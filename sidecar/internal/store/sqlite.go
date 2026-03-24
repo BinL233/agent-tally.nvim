@@ -66,6 +66,10 @@ func (s *SQLiteStore) Query(ctx context.Context, filter QueryFilter) ([]Event, e
 		q += " AND process_name = ?"
 		args = append(args, filter.ProcessName)
 	}
+	if filter.PathPrefix != "" {
+		q += " AND file_path GLOB ?"
+		args = append(args, filter.PathPrefix+"/*")
+	}
 	if filter.Since != nil {
 		q += " AND timestamp >= ?"
 		args = append(args, filter.Since.UTC().Format("2006-01-02T15:04:05.000"))
@@ -112,7 +116,10 @@ func (s *SQLiteStore) QueryByFile(ctx context.Context, filter QueryFilter) ([]Fi
 		q += " AND process_name = ?"
 		args = append(args, filter.ProcessName)
 	}
-
+	if filter.PathPrefix != "" {
+		q += " AND file_path GLOB ?"
+		args = append(args, filter.PathPrefix+"/*")
+	}
 	if filter.Since != nil {
 		q += " AND timestamp >= ?"
 		args = append(args, filter.Since.UTC().Format("2006-01-02T15:04:05.000"))
@@ -155,6 +162,152 @@ func (s *SQLiteStore) ClearAll(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM events")
 	if err != nil {
 		return fmt.Errorf("clear events: %w", err)
+	}
+	return nil
+}
+
+// ClearByPath deletes all events whose file_path falls under pathPrefix.
+func (s *SQLiteStore) ClearByPath(ctx context.Context, pathPrefix string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM events WHERE file_path GLOB ?", pathPrefix+"/*")
+	if err != nil {
+		return fmt.Errorf("clear events by path: %w", err)
+	}
+	return nil
+}
+
+// QueryByDay returns token totals grouped by calendar day.
+func (s *SQLiteStore) QueryByDay(ctx context.Context, filter QueryFilter) ([]DaySummary, error) {
+	q := `SELECT DATE(timestamp) AS day,
+	             SUM(tokens_input)  AS tokens_in,
+	             SUM(tokens_output) AS tokens_out
+	      FROM events WHERE 1=1`
+	var args []any
+
+	if filter.ProcessName != "" {
+		q += " AND process_name = ?"
+		args = append(args, filter.ProcessName)
+	}
+	if filter.PathPrefix != "" {
+		q += " AND file_path GLOB ?"
+		args = append(args, filter.PathPrefix+"/*")
+	}
+	if filter.Since != nil {
+		q += " AND timestamp >= ?"
+		args = append(args, filter.Since.UTC().Format("2006-01-02T15:04:05.000"))
+	}
+
+	q += " GROUP BY DATE(timestamp) ORDER BY day"
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query by day: %w", err)
+	}
+	defer rows.Close()
+
+	var results []DaySummary
+
+	for rows.Next() {
+		var r DaySummary
+		if err := rows.Scan(&r.Day, &r.TokensIn, &r.TokensOut); err != nil {
+			return nil, fmt.Errorf("scan day summary: %w", err)
+		}
+		results = append(results, r)
+	}
+
+	if results == nil {
+		results = []DaySummary{}
+	}
+
+	return results, rows.Err()
+}
+
+// InsertToolEvent records a skill/tool invocation, ignoring duplicates.
+func (s *SQLiteStore) InsertToolEvent(ctx context.Context, e *ToolEvent) error {
+	const q = `INSERT OR IGNORE INTO skill_events
+		(timestamp, agent, session_id, tool_name, tool_call_id, cwd)
+		VALUES (?, ?, ?, ?, ?, ?)`
+
+	ts := e.Timestamp.UTC().Format("2006-01-02T15:04:05.000")
+	_, err := s.db.ExecContext(ctx, q, ts, e.Agent, e.SessionID, e.ToolName, e.ToolCallID, e.CWD)
+	if err != nil {
+		return fmt.Errorf("insert skill event: %w", err)
+	}
+	return nil
+}
+
+// QueryTools returns aggregated tool-use counts grouped by tool_name and agent.
+func (s *SQLiteStore) QueryTools(ctx context.Context, filter ToolFilter) ([]ToolSummary, error) {
+	q := `SELECT tool_name, agent, COUNT(*) AS cnt FROM skill_events WHERE 1=1`
+	var args []any
+
+	if filter.Agent != "" {
+		q += " AND agent = ?"
+		args = append(args, filter.Agent)
+	}
+	if filter.CWDPrefix != "" {
+		q += " AND (cwd = ? OR cwd GLOB ?)"
+		args = append(args, filter.CWDPrefix, filter.CWDPrefix+"/*")
+	}
+	if filter.Since != nil {
+		q += " AND timestamp >= ?"
+		args = append(args, filter.Since.UTC().Format("2006-01-02T15:04:05.000"))
+	}
+
+	q += " GROUP BY tool_name, agent ORDER BY cnt DESC"
+
+	if filter.Limit > 0 {
+		q += " LIMIT ?"
+		args = append(args, filter.Limit)
+	}
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query skills: %w", err)
+	}
+	defer rows.Close()
+
+	var results []ToolSummary
+
+	for rows.Next() {
+		var r ToolSummary
+		if err := rows.Scan(&r.ToolName, &r.Agent, &r.Count); err != nil {
+			return nil, fmt.Errorf("scan skill summary: %w", err)
+		}
+		results = append(results, r)
+	}
+
+	if results == nil {
+		results = []ToolSummary{}
+	}
+
+	return results, rows.Err()
+}
+
+// GetLogOffset returns the last-processed byte offset for a log file.
+func (s *SQLiteStore) GetLogOffset(ctx context.Context, logPath string) (int64, error) {
+	var offset int64
+	err := s.db.QueryRowContext(ctx,
+		"SELECT byte_offset FROM log_offsets WHERE log_path = ?", logPath,
+	).Scan(&offset)
+
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("get log offset: %w", err)
+	}
+	return offset, nil
+}
+
+// SetLogOffset saves the byte offset for a log file.
+func (s *SQLiteStore) SetLogOffset(ctx context.Context, logPath string, offset int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO log_offsets (log_path, byte_offset) VALUES (?, ?)
+		 ON CONFLICT(log_path) DO UPDATE SET byte_offset = excluded.byte_offset`,
+		logPath, offset,
+	)
+	if err != nil {
+		return fmt.Errorf("set log offset: %w", err)
 	}
 	return nil
 }

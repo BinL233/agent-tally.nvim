@@ -2,3 +2,4 @@ sidecar/build/
 *.db
 *.db-shm
 *.db-wal
+mock.lua

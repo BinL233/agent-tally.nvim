@@ -7,11 +7,15 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/kaileying/agent-tally.nvim/sidecar/internal/config"
+	"github.com/kaileying/agent-tally.nvim/sidecar/internal/logparse"
 	"github.com/kaileying/agent-tally.nvim/sidecar/internal/procattr"
 	"github.com/kaileying/agent-tally.nvim/sidecar/internal/store"
 	"github.com/kaileying/agent-tally.nvim/sidecar/internal/tokencount"
@@ -20,11 +24,12 @@ import (
 
 // Daemon orchestrates the file watcher, store, process scanner, and IPC socket.
 type Daemon struct {
-	cfg       *config.Config
-	store     store.Store
-	watcher   watcher.Watcher
-	scanner   *procattr.Scanner
-	estimator *tokencount.Estimator
+	cfg        *config.Config
+	store      store.Store
+	watcher    watcher.Watcher
+	scanner    *procattr.Scanner
+	estimator  *tokencount.Estimator
+	logScanner *logparse.Scanner
 
 	listener net.Listener
 	cancel   context.CancelFunc
@@ -45,11 +50,12 @@ func New(cfg *config.Config) (*Daemon, error) {
 	}
 
 	return &Daemon{
-		cfg:       cfg,
-		store:     st,
-		watcher:   w,
-		scanner:   procattr.NewScanner(cfg.Watchlist),
-		estimator: tokencount.NewEstimator(),
+		cfg:        cfg,
+		store:      st,
+		watcher:    w,
+		scanner:    procattr.NewScanner(cfg.Watchlist),
+		estimator:  tokencount.NewEstimator(),
+		logScanner: logparse.NewScanner(st, cfg.WatchPaths, cfg.LogScanInterval),
 	}, nil
 }
 
@@ -60,6 +66,16 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 
 	ctx, d.cancel = context.WithCancel(ctx)
+
+	// Pre-snapshot all watched files so TokensInput is non-zero on first write.
+	// Uses the same exclude list as the watcher to skip node_modules, .git, etc.
+	excludeSet := make(map[string]bool, len(d.cfg.ExcludeDirs))
+	for _, ex := range d.cfg.ExcludeDirs {
+		excludeSet[ex] = true
+	}
+	for _, p := range d.cfg.WatchPaths {
+		d.estimator.SnapshotDir(p, excludeSet)
+	}
 
 	// Start process scanner goroutine.
 	scanStop := make(chan struct{})
@@ -91,6 +107,13 @@ func (d *Daemon) Start(ctx context.Context) error {
 	go func() {
 		defer d.wg.Done()
 		d.processEvents(ctx, events)
+	}()
+
+	// Start log scanner goroutine.
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		d.logScanner.Start(ctx)
 	}()
 
 	// Start IPC socket.
@@ -126,6 +149,32 @@ func (d *Daemon) Stop() {
 	log.Println("agent-tallyd stopped")
 }
 
+// lsofAttribute runs lsof to find which candidate process has filePath open.
+// This is used when CWD matching produces a tie between multiple processes.
+// Returns the matching candidate, or an empty ProcessInfo if none found.
+func lsofAttribute(candidates []procattr.ProcessInfo, filePath string) procattr.ProcessInfo {
+	out, err := exec.Command("lsof", "-t", filePath).Output()
+	if err != nil || len(out) == 0 {
+		return procattr.ProcessInfo{}
+	}
+
+	pidSet := make(map[int]bool)
+
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
+			pidSet[pid] = true
+		}
+	}
+
+	for _, p := range candidates {
+		if pidSet[p.PID] {
+			return p
+		}
+	}
+
+	return procattr.ProcessInfo{}
+}
+
 // processEvents reads watcher events, attributes them to processes,
 // estimates tokens, and persists them.
 func (d *Daemon) processEvents(ctx context.Context, events <-chan watcher.Event) {
@@ -139,8 +188,24 @@ func (d *Daemon) processEvents(ctx context.Context, events <-chan watcher.Event)
 				return
 			}
 
-			// Try to attribute the file write to a watchlist process.
-			proc := d.scanner.Attribute(ev.FilePath)
+			// Find all watchlist processes whose CWD matches the file path.
+			candidates := d.scanner.AttributeAll(ev.FilePath)
+
+			if len(candidates) == 0 {
+				continue
+			}
+
+			// When multiple processes share the same CWD, use lsof to find
+			// which one actually has the file open right now.
+			var proc procattr.ProcessInfo
+			if len(candidates) == 1 {
+				proc = candidates[0]
+			} else {
+				proc = lsofAttribute(candidates, ev.FilePath)
+				if proc.Name == "" {
+					proc = candidates[0] // lsof missed it (file already closed); take first
+				}
+			}
 
 			// If no AI process is responsible, skip this event.
 			if proc.Name == "" {
@@ -335,8 +400,172 @@ func (d *Daemon) handleConn(ctx context.Context, conn net.Conn) {
 
 		enc.Encode(RPCResponse{Result: map[string]any{"ok": true}})
 
+	case "watch-add":
+		var params struct {
+			Path string `json:"path"`
+		}
+
+		if req.Params != nil {
+			json.Unmarshal(req.Params, &params)
+		}
+
+		if params.Path == "" {
+			enc.Encode(RPCResponse{Error: "path is required"})
+			return
+		}
+
+		for _, p := range d.cfg.WatchPaths {
+			if p == params.Path {
+				enc.Encode(RPCResponse{Result: map[string]any{"ok": true}})
+				return
+			}
+		}
+
+		d.watcher.AddPath(params.Path, d.cfg)
+
+		excludeSet := make(map[string]bool, len(d.cfg.ExcludeDirs))
+		for _, ex := range d.cfg.ExcludeDirs {
+			excludeSet[ex] = true
+		}
+		d.estimator.SnapshotDir(params.Path, excludeSet)
+
+		d.cfg.WatchPaths = append(d.cfg.WatchPaths, params.Path)
+
+		// Also register the path with the log scanner so skill events are
+		// collected for paths added dynamically after daemon startup.
+		go d.logScanner.AddCWD(ctx, params.Path)
+
+		enc.Encode(RPCResponse{Result: map[string]any{"ok": true}})
+
+	case "watch-remove":
+		var params struct {
+			Path string `json:"path"`
+		}
+
+		if req.Params != nil {
+			json.Unmarshal(req.Params, &params)
+		}
+
+		if params.Path == "" {
+			enc.Encode(RPCResponse{Error: "path is required"})
+			return
+		}
+
+		newPaths := make([]string, 0, len(d.cfg.WatchPaths))
+		for _, p := range d.cfg.WatchPaths {
+			if p == params.Path {
+				d.watcher.RemovePath(p)
+			} else {
+				newPaths = append(newPaths, p)
+			}
+		}
+		d.cfg.WatchPaths = newPaths
+		enc.Encode(RPCResponse{Result: map[string]any{"ok": true}})
+
 	case "clear":
 		if err := d.store.ClearAll(ctx); err != nil {
+			enc.Encode(RPCResponse{Error: err.Error()})
+			return
+		}
+
+		enc.Encode(RPCResponse{Result: map[string]any{"ok": true}})
+
+	case "query-tools":
+		var filter store.ToolFilter
+
+		if req.Params != nil {
+			json.Unmarshal(req.Params, &filter)
+		}
+
+		if filter.Limit == 0 {
+			filter.Limit = 100
+		}
+
+		// If this cwd hasn't been registered with the log scanner yet,
+		// add it and scan synchronously so results are fresh on first open.
+		if filter.CWDPrefix != "" {
+			d.logScanner.AddCWD(ctx, filter.CWDPrefix)
+		}
+
+		summaries, err := d.store.QueryTools(ctx, filter)
+		if err != nil {
+			enc.Encode(RPCResponse{Error: err.Error()})
+			return
+		}
+
+		if summaries == nil {
+			summaries = []store.ToolSummary{}
+		}
+
+		enc.Encode(RPCResponse{Result: summaries})
+
+	case "query-by-day":
+		var filter store.QueryFilter
+
+		if req.Params != nil {
+			json.Unmarshal(req.Params, &filter)
+		}
+
+		// Default to the past 365 days when no since is provided.
+		if filter.Since == nil {
+			t := time.Now().AddDate(-1, 0, 0)
+			filter.Since = &t
+		}
+
+		days, err := d.store.QueryByDay(ctx, filter)
+		if err != nil {
+			enc.Encode(RPCResponse{Error: err.Error()})
+			return
+		}
+
+		if days == nil {
+			days = []store.DaySummary{}
+		}
+
+		enc.Encode(RPCResponse{Result: days})
+
+	case "record-tool":
+		var ev store.ToolEvent
+
+		if req.Params != nil {
+			json.Unmarshal(req.Params, &ev)
+		}
+
+		if ev.Timestamp.IsZero() {
+			ev.Timestamp = time.Now()
+		}
+
+		if ev.ToolName == "" {
+			enc.Encode(RPCResponse{Error: "tool_name is required"})
+			return
+		}
+
+		if err := d.store.InsertToolEvent(ctx, &ev); err != nil {
+			enc.Encode(RPCResponse{Error: err.Error()})
+			return
+		}
+
+		enc.Encode(RPCResponse{Result: map[string]any{"ok": true}})
+
+	case "scan-logs":
+		n := d.logScanner.ScanOnce(ctx)
+		enc.Encode(RPCResponse{Result: map[string]any{"ok": true, "new_events": n}})
+
+	case "clear-path":
+		var params struct {
+			Path string `json:"path"`
+		}
+
+		if req.Params != nil {
+			json.Unmarshal(req.Params, &params)
+		}
+
+		if params.Path == "" {
+			enc.Encode(RPCResponse{Error: "path is required"})
+			return
+		}
+
+		if err := d.store.ClearByPath(ctx, params.Path); err != nil {
 			enc.Encode(RPCResponse{Error: err.Error()})
 			return
 		}

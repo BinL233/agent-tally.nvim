@@ -11,6 +11,11 @@ M.defaults = {
   auto_start = false,
   -- Status line format string. %t = total tokens, %p = process name.
   statusline_format = " [AT: %t tokens]",
+  -- Query limits (fetch limits only — the database stores all events).
+  query = {
+    events_limit = 500,   -- max events loaded into the dashboard
+    tools_limit = 50,    -- max tool rows fetched for the By Tool section
+  },
   -- UI options.
   ui = {
     width = 0.8,
@@ -26,6 +31,7 @@ M.defaults = {
     prev_entry = "<C-k>",
     grep = "G",
     refresh = "r",
+    heatmap = "H",
   },
 }
 

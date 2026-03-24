@@ -81,18 +81,29 @@ func (s *Scanner) UpdateWatchlist(names []string) {
 // Attribute finds which watchlist process is most likely responsible for
 // a file write at the given path. Uses CWD-based matching: the process
 // whose CWD is the longest prefix of filePath wins.
+// When multiple processes tie on CWD length, returns the first found.
+// Use AttributeAll to get all tied candidates for further disambiguation.
 func (s *Scanner) Attribute(filePath string) ProcessInfo {
+	candidates := s.AttributeAll(filePath)
+
+	if len(candidates) == 0 {
+		return ProcessInfo{}
+	}
+
+	return candidates[0]
+}
+
+// AttributeAll returns all watchlist processes whose CWD is the longest
+// matching prefix of filePath. Usually one result; multiple means a tie
+// (e.g. two tools running in the same directory).
+func (s *Scanner) AttributeAll(filePath string) []ProcessInfo {
 	s.mu.RLock()
 	procs := make([]ProcessInfo, len(s.running))
 	copy(procs, s.running)
 	s.mu.RUnlock()
 
-	if len(procs) == 0 {
-		return ProcessInfo{}
-	}
-
 	cleanPath := filepath.Clean(filePath)
-	var best ProcessInfo
+	var matches []ProcessInfo
 	bestLen := 0
 
 	for _, p := range procs {
@@ -102,21 +113,25 @@ func (s *Scanner) Attribute(filePath string) ProcessInfo {
 
 		cleanCWD := filepath.Clean(p.CWD)
 
-		// Check if the file is under this process's CWD.
 		if strings.HasPrefix(cleanPath, cleanCWD+"/") || cleanPath == cleanCWD {
 			if len(cleanCWD) > bestLen {
-				best = p
+				matches = []ProcessInfo{p}
 				bestLen = len(cleanCWD)
+			} else if len(cleanCWD) == bestLen {
+				matches = append(matches, p)
 			}
 		}
 	}
 
-	return best
+	return matches
 }
 
 // scan queries the system for running processes matching the watchlist.
+// Uses `ps -eo pid,args` so the full command line is available for
+// path-based matching (e.g. Cursor's agent binary is named "agent" but its
+// args reference a "cursor-agent" path component).
 func (s *Scanner) scan() {
-	out, err := exec.Command("ps", "-eo", "pid,comm").Output()
+	out, err := exec.Command("ps", "-eo", "pid,args").Output()
 	if err != nil {
 		return
 	}
@@ -140,20 +155,45 @@ func (s *Scanner) scan() {
 			continue
 		}
 
-		// ps comm can be a full path; extract the basename.
+		// fields[1] is the binary path; extract the basename.
 		name := fields[1]
-
 		if idx := strings.LastIndex(name, "/"); idx >= 0 {
 			name = name[idx+1:]
 		}
 
-		if wl[name] {
+		// If comm doesn't match, fall back to the real executable name.
+		// Some programs (e.g. Python-based tools) rename their thread to
+		// something like "MainThread", hiding the binary name from comm.
+		matchName := name
+		if !wl[name] {
+			if exe := resolveExeName(pid); exe != "" && wl[exe] {
+				matchName = exe
+			}
+		}
+
+		// Last resort: check the full command line for path components that
+		// match a watchlist entry. This catches tools like Cursor whose AI
+		// agent binary is named "agent" but whose args contain "cursor-agent".
+		if !wl[matchName] && len(fields) > 1 {
+			fullArgs := strings.Join(fields[1:], " ")
+			for key := range wl {
+				// Match "/key-" (e.g. "cursor-agent") or "/key/" or "/key " etc.
+				if strings.Contains(fullArgs, "/"+key+"-") ||
+					strings.Contains(fullArgs, "/"+key+"/") ||
+					strings.Contains(fullArgs, "/"+key+" ") {
+					matchName = key
+					break
+				}
+			}
+		}
+
+		if wl[matchName] {
 			// Reuse cached CWD if available, only resolve for new PIDs.
 			cwd, cached := s.cwdCache[pid]
 			if !cached {
 				cwd = resolveCWD(pid)
 			}
-			found = append(found, ProcessInfo{PID: pid, Name: name, CWD: cwd})
+			found = append(found, ProcessInfo{PID: pid, Name: matchName, CWD: cwd})
 			newCache[pid] = cwd
 		}
 	}

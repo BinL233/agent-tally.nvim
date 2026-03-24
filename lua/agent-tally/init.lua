@@ -15,8 +15,13 @@ function M.setup(opts)
     M.start_daemon()
   end
 
-  -- Load AI plugin hooks (no-op if plugins aren't installed).
-  require("agent-tally.hooks.avante").setup()
+  -- On exit, remove the current directory from the daemon's watch list.
+  vim.api.nvim_create_autocmd("VimLeavePre", {
+    once = true,
+    callback = function()
+      rpc.request(config.current.socket_path, "watch-remove", { path = vim.fn.getcwd() }, function() end)
+    end,
+  })
 end
 
 --- Probe the socket to check if a daemon is already answering, then call cb(alive).
@@ -209,10 +214,35 @@ function M.record(opts)
   end)
 end
 
---- Clear all recorded events from the database (with confirmation).
-function M.clear()
+--- Clear events for the current working directory (with confirmation).
+function M.clean()
+  local cwd = vim.fn.getcwd()
   local choice = vim.fn.confirm(
-    "Clear all agent-tally events from the database?\nThis cannot be undone.",
+    "Clear agent-tally events for:\n" .. cwd .. "\nThis cannot be undone.",
+    "&Yes\n&No",
+    2
+  )
+
+  if choice ~= 1 then
+    return
+  end
+
+  rpc.request(config.current.socket_path, "clear-path", { path = cwd }, function(err, _)
+    vim.schedule(function()
+      if err then
+        vim.notify("agent-tally: " .. err, vim.log.levels.ERROR)
+        return
+      end
+
+      vim.notify("agent-tally: events cleared for " .. cwd, vim.log.levels.INFO)
+    end)
+  end)
+end
+
+--- Clear all recorded events from the database (with confirmation).
+function M.clean_all()
+  local choice = vim.fn.confirm(
+    "Clear ALL agent-tally events from the database?\nThis cannot be undone.",
     "&Yes\n&No",
     2
   )
@@ -231,6 +261,12 @@ function M.clear()
       vim.notify("agent-tally: all events cleared", vim.log.levels.INFO)
     end)
   end)
+end
+
+--- Clear events for the current working directory.
+--- Kept for backward compatibility with :AgentTally clear subcommand.
+function M.clear()
+  M.clean()
 end
 
 --- Open the tally dashboard, auto-starting the daemon if it is not running.
