@@ -263,10 +263,10 @@ function M.clean_all()
   end)
 end
 
---- Clear all recorded events from the database (with confirmation).
+--- Clear events for the current working directory.
 --- Kept for backward compatibility with :AgentTally clear subcommand.
 function M.clear()
-  M.clean_all()
+  M.clean()
 end
 
 --- Open the tally dashboard, auto-starting the daemon if it is not running.

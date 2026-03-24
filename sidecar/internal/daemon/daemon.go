@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/kaileying/agent-tally.nvim/sidecar/internal/config"
+	"github.com/kaileying/agent-tally.nvim/sidecar/internal/logparse"
 	"github.com/kaileying/agent-tally.nvim/sidecar/internal/procattr"
 	"github.com/kaileying/agent-tally.nvim/sidecar/internal/store"
 	"github.com/kaileying/agent-tally.nvim/sidecar/internal/tokencount"
@@ -23,11 +24,12 @@ import (
 
 // Daemon orchestrates the file watcher, store, process scanner, and IPC socket.
 type Daemon struct {
-	cfg       *config.Config
-	store     store.Store
-	watcher   watcher.Watcher
-	scanner   *procattr.Scanner
-	estimator *tokencount.Estimator
+	cfg        *config.Config
+	store      store.Store
+	watcher    watcher.Watcher
+	scanner    *procattr.Scanner
+	estimator  *tokencount.Estimator
+	logScanner *logparse.Scanner
 
 	listener net.Listener
 	cancel   context.CancelFunc
@@ -48,11 +50,12 @@ func New(cfg *config.Config) (*Daemon, error) {
 	}
 
 	return &Daemon{
-		cfg:       cfg,
-		store:     st,
-		watcher:   w,
-		scanner:   procattr.NewScanner(cfg.Watchlist),
-		estimator: tokencount.NewEstimator(),
+		cfg:        cfg,
+		store:      st,
+		watcher:    w,
+		scanner:    procattr.NewScanner(cfg.Watchlist),
+		estimator:  tokencount.NewEstimator(),
+		logScanner: logparse.NewScanner(st, cfg.WatchPaths, cfg.LogScanInterval),
 	}, nil
 }
 
@@ -104,6 +107,13 @@ func (d *Daemon) Start(ctx context.Context) error {
 	go func() {
 		defer d.wg.Done()
 		d.processEvents(ctx, events)
+	}()
+
+	// Start log scanner goroutine.
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		d.logScanner.Start(ctx)
 	}()
 
 	// Start IPC socket.
@@ -420,6 +430,11 @@ func (d *Daemon) handleConn(ctx context.Context, conn net.Conn) {
 		d.estimator.SnapshotDir(params.Path, excludeSet)
 
 		d.cfg.WatchPaths = append(d.cfg.WatchPaths, params.Path)
+
+		// Also register the path with the log scanner so skill events are
+		// collected for paths added dynamically after daemon startup.
+		go d.logScanner.AddCWD(ctx, params.Path)
+
 		enc.Encode(RPCResponse{Result: map[string]any{"ok": true}})
 
 	case "watch-remove":
@@ -454,6 +469,87 @@ func (d *Daemon) handleConn(ctx context.Context, conn net.Conn) {
 		}
 
 		enc.Encode(RPCResponse{Result: map[string]any{"ok": true}})
+
+	case "query-tools":
+		var filter store.ToolFilter
+
+		if req.Params != nil {
+			json.Unmarshal(req.Params, &filter)
+		}
+
+		if filter.Limit == 0 {
+			filter.Limit = 100
+		}
+
+		// If this cwd hasn't been registered with the log scanner yet,
+		// add it and scan synchronously so results are fresh on first open.
+		if filter.CWDPrefix != "" {
+			d.logScanner.AddCWD(ctx, filter.CWDPrefix)
+		}
+
+		summaries, err := d.store.QueryTools(ctx, filter)
+		if err != nil {
+			enc.Encode(RPCResponse{Error: err.Error()})
+			return
+		}
+
+		if summaries == nil {
+			summaries = []store.ToolSummary{}
+		}
+
+		enc.Encode(RPCResponse{Result: summaries})
+
+	case "query-by-day":
+		var filter store.QueryFilter
+
+		if req.Params != nil {
+			json.Unmarshal(req.Params, &filter)
+		}
+
+		// Default to the past 365 days when no since is provided.
+		if filter.Since == nil {
+			t := time.Now().AddDate(-1, 0, 0)
+			filter.Since = &t
+		}
+
+		days, err := d.store.QueryByDay(ctx, filter)
+		if err != nil {
+			enc.Encode(RPCResponse{Error: err.Error()})
+			return
+		}
+
+		if days == nil {
+			days = []store.DaySummary{}
+		}
+
+		enc.Encode(RPCResponse{Result: days})
+
+	case "record-tool":
+		var ev store.ToolEvent
+
+		if req.Params != nil {
+			json.Unmarshal(req.Params, &ev)
+		}
+
+		if ev.Timestamp.IsZero() {
+			ev.Timestamp = time.Now()
+		}
+
+		if ev.ToolName == "" {
+			enc.Encode(RPCResponse{Error: "tool_name is required"})
+			return
+		}
+
+		if err := d.store.InsertToolEvent(ctx, &ev); err != nil {
+			enc.Encode(RPCResponse{Error: err.Error()})
+			return
+		}
+
+		enc.Encode(RPCResponse{Result: map[string]any{"ok": true}})
+
+	case "scan-logs":
+		n := d.logScanner.ScanOnce(ctx)
+		enc.Encode(RPCResponse{Result: map[string]any{"ok": true, "new_events": n}})
 
 	case "clear-path":
 		var params struct {

@@ -1,6 +1,24 @@
 # agent-tally.nvim
 
-A Neovim plugin and system-wide daemon that tracks AI token usage for your current project directory. Monitors files read (tokens in) and written (tokens out) by AI coding assistants like Claude Code, Aider, Cursor, Copilot, and more.
+A Neovim plugin and system-wide daemon that tracks AI token usage for your current project directory. Monitors files read (tokens in) and written (tokens out) by AI coding assistants like Claude Code, Cursor, Copilot, and more.
+
+**Dashboard** — Your high-level summary of tokens, agents, and top files at a glance.
+![Dashboard](images/Dashboard.png)
+
+**Heatmap** — Daily token activity heatmap. You can generate it with your choice of scope, agent, and metric.
+![Heatmap](images/Heatmap.png)
+
+**Agent detail** — Deep dive into an agent’s token history and file interactions.
+![AgentDetail](images/AgentDetail.png)
+
+**File detail** — Track exactly who edited a file, when, and the associated token cost.
+![FileDetail](images/FileDetail.png)
+
+**Tool usage** — Aggregated count of every tool call (Read, Edit, Bash, Grep, …) made by each agent.
+![ToolUsage](images/ToolUsage.png)
+
+**All events** — A complete, chronological log of every system event and timestamp.
+![AllEvents](images/AllEvents.png)
 
 ## Requirements
 
@@ -79,7 +97,6 @@ The following agents are monitored by default. Use `:AgentTallyWatchlist` to ena
 | Agent | Process Name |
 |-------|-------------|
 | [Claude Code](https://claude.ai/code) | `claude` |
-| [Aider](https://aider.chat) | `aider` |
 | [Cursor](https://cursor.sh) | `cursor` | 
 | [GitHub Copilot](https://github.com/features/copilot) | `copilot` |
 
@@ -129,6 +146,7 @@ agent-tallyd --socket /tmp/my.sock              # custom socket path
 | `Backspace` | Go back to previous view                        |
 | `Ctrl-j`    | Next entry                                      |
 | `Ctrl-k`    | Previous entry                                  |
+| `H`         | Generate heatmap (scope → agent → metric)       |
 
 ### Configuration
 
@@ -149,6 +167,12 @@ require("agent-tally").setup({
   -- Status line format (%t = total tokens, %p = process name)
   statusline_format = " [AT: %t tokens]",
 
+  -- Query limits 
+  query = {
+    events_limit = 500,  -- max events loaded into the dashboard per open
+    skills_limit = 50,   -- max skill rows fetched for the By Skill section
+  },
+
   -- UI options
   ui = {
     width = 0.8,        -- 80% of editor width
@@ -156,7 +180,7 @@ require("agent-tally").setup({
     border = "rounded", -- border style
   },
 
-  -- Dashboard keymaps (all customizable)
+  -- Dashboard keymaps
   keymaps = {
     close = { "q", "<Esc>" },
     drill_down = "<CR>",
@@ -165,6 +189,7 @@ require("agent-tally").setup({
     prev_entry = "<C-k>",
     grep = "G",
     refresh = "r",
+    heatmap = "H",  -- generate heatmap (scope → agent → metric)
   },
 })
 ```

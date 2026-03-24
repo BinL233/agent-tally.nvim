@@ -31,6 +31,39 @@ type FileTokenSummary struct {
 	EventCount   int    `json:"event_count"`
 }
 
+// ToolEvent represents a single tool/skill invocation by an AI CLI agent.
+type ToolEvent struct {
+	ID         int64     `json:"id"`
+	Timestamp  time.Time `json:"timestamp"`
+	Agent      string    `json:"agent"`
+	SessionID  string    `json:"session_id"`
+	ToolName   string    `json:"tool_name"`
+	ToolCallID string    `json:"tool_call_id"`
+	CWD        string    `json:"cwd"`
+}
+
+// ToolSummary holds aggregated skill-use data for dashboard display.
+type ToolSummary struct {
+	ToolName string `json:"tool_name"`
+	Count    int    `json:"count"`
+	Agent    string `json:"agent"`
+}
+
+// ToolFilter controls which skill events are returned.
+type ToolFilter struct {
+	Agent     string     `json:"agent"`
+	CWDPrefix string     `json:"cwd_prefix"`
+	Since     *time.Time `json:"since"`
+	Limit     int        `json:"limit"`
+}
+
+// DaySummary holds aggregated token data for a single calendar day.
+type DaySummary struct {
+	Day       string `json:"day"`        // "2025-04-15"
+	TokensIn  int    `json:"tokens_in"`
+	TokensOut int    `json:"tokens_out"`
+}
+
 // Store is the interface for event persistence.
 type Store interface {
 	// Init creates tables and indexes if they don't exist.
@@ -45,11 +78,26 @@ type Store interface {
 	// QueryByFile returns token totals grouped by file.
 	QueryByFile(ctx context.Context, filter QueryFilter) ([]FileTokenSummary, error)
 
+	// QueryByDay returns token totals grouped by calendar day.
+	QueryByDay(ctx context.Context, filter QueryFilter) ([]DaySummary, error)
+
 	// ClearAll deletes all events from the store.
 	ClearAll(ctx context.Context) error
 
 	// ClearByPath deletes all events whose file_path falls under pathPrefix.
 	ClearByPath(ctx context.Context, pathPrefix string) error
+
+	// InsertToolEvent records a tool invocation. Silently ignores duplicates.
+	InsertToolEvent(ctx context.Context, e *ToolEvent) error
+
+	// QueryTools returns aggregated tool-use counts matching the filter.
+	QueryTools(ctx context.Context, filter ToolFilter) ([]ToolSummary, error)
+
+	// GetLogOffset returns the byte offset of the last-processed position in a log file.
+	GetLogOffset(ctx context.Context, logPath string) (int64, error)
+
+	// SetLogOffset saves the byte offset for a log file.
+	SetLogOffset(ctx context.Context, logPath string, offset int64) error
 
 	// Close releases database resources.
 	Close() error

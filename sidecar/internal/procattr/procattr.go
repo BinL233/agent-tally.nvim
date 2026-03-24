@@ -127,8 +127,11 @@ func (s *Scanner) AttributeAll(filePath string) []ProcessInfo {
 }
 
 // scan queries the system for running processes matching the watchlist.
+// Uses `ps -eo pid,args` so the full command line is available for
+// path-based matching (e.g. Cursor's agent binary is named "agent" but its
+// args reference a "cursor-agent" path component).
 func (s *Scanner) scan() {
-	out, err := exec.Command("ps", "-eo", "pid,comm").Output()
+	out, err := exec.Command("ps", "-eo", "pid,args").Output()
 	if err != nil {
 		return
 	}
@@ -152,9 +155,8 @@ func (s *Scanner) scan() {
 			continue
 		}
 
-		// ps comm can be a full path; extract the basename.
+		// fields[1] is the binary path; extract the basename.
 		name := fields[1]
-
 		if idx := strings.LastIndex(name, "/"); idx >= 0 {
 			name = name[idx+1:]
 		}
@@ -166,6 +168,22 @@ func (s *Scanner) scan() {
 		if !wl[name] {
 			if exe := resolveExeName(pid); exe != "" && wl[exe] {
 				matchName = exe
+			}
+		}
+
+		// Last resort: check the full command line for path components that
+		// match a watchlist entry. This catches tools like Cursor whose AI
+		// agent binary is named "agent" but whose args contain "cursor-agent".
+		if !wl[matchName] && len(fields) > 1 {
+			fullArgs := strings.Join(fields[1:], " ")
+			for key := range wl {
+				// Match "/key-" (e.g. "cursor-agent") or "/key/" or "/key " etc.
+				if strings.Contains(fullArgs, "/"+key+"-") ||
+					strings.Contains(fullArgs, "/"+key+"/") ||
+					strings.Contains(fullArgs, "/"+key+" ") {
+					matchName = key
+					break
+				}
 			}
 		}
 

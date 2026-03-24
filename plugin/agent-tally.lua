@@ -19,8 +19,18 @@ def_hl("AgentTallySection3", { fg = "#bb9af7", bold = true, default = true })
 def_hl("AgentTallySection4", { fg = "#9ece6a", bold = true, default = true })
 -- Section 5: By File table header + separator                 →  orange
 def_hl("AgentTallySection5", { fg = "#ff9e64", bold = true, default = true })
+-- Section 6: By Tool table header + separator                →  pink/rose
+def_hl("AgentTallySection6", { fg = "#f7768e", bold = true, default = true })
 -- Keybind hint line at the bottom                             →  dim/comment
 def_hl("AgentTallyHint",     { link = "Comment", default = true })
+-- Heatmap intensity levels (GitHub-green palette)
+def_hl("AgentTallyHeat0", { fg = "#2d333b", default = true }) -- no activity
+def_hl("AgentTallyHeat1", { fg = "#0e4429", default = true }) -- very low
+def_hl("AgentTallyHeat2", { fg = "#006d32", default = true }) -- low
+def_hl("AgentTallyHeat3", { fg = "#26a641", default = true }) -- medium
+def_hl("AgentTallyHeat4", { fg = "#39d353", default = true }) -- high
+def_hl("AgentTallyHeat5", { fg = "#56e370", default = true }) -- very high
+def_hl("AgentTallyHeat6", { fg = "#7ff0a0", default = true }) -- max
 
 vim.api.nvim_create_user_command("AgentTally", function(opts)
   require("agent-tally").command(opts)
@@ -53,3 +63,18 @@ end, { desc = "Clear agent-tally events for the current directory" })
 vim.api.nvim_create_user_command("AgentTallyCleanAll", function()
   require("agent-tally").clean_all()
 end, { desc = "Clear all agent-tally events from the database" })
+
+vim.api.nvim_create_user_command("AgentTallyMockData", function()
+  local config = require("agent-tally.config")
+  local mock   = require("agent-tally.mock")
+  vim.notify("[agent-tally] Inserting mock data...", vim.log.levels.INFO)
+  mock.generate(config.current.socket_path, vim.fn.getcwd(), function(ev_ok, sk_ok, first_err, total_errs)
+    local msg = string.format("[agent-tally] Done: %d token events, %d tool events inserted", ev_ok, sk_ok)
+    if total_errs and total_errs > 0 then
+      msg = msg .. string.format(" (%d errors", total_errs)
+      if first_err then msg = msg .. ": " .. first_err end
+      msg = msg .. ")"
+    end
+    vim.notify(msg, vim.log.levels.INFO)
+  end)
+end, { desc = "Insert 3 months of mock token events for testing" })
