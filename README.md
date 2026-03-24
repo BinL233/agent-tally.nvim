@@ -1,6 +1,6 @@
 # agent-tally.nvim
 
-A Neovim plugin and system-wide daemon that tracks AI token usage for your current project directory. Monitors files read (tokens in) and written (tokens out) by AI coding assistants like Claude Code, Cursor, Copilot, and more.
+A Neovim plugin and system-wide daemon that tracks AI token usage and tool activity across your projects. It monitors file I/O and command execution from AI coding assistants like Claude Code, Cursor, and Copilot, giving you a clear picture of "tokens in" (context read), "tokens out" (code generated), and the specific tools used to get the job done.
 
 **Dashboard** — Your high-level summary of tokens, agents, and top files at a glance.
 ![Dashboard](images/Dashboard.png)
