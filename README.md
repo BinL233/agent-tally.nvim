@@ -95,18 +95,40 @@ The following agents are monitored by default. Use `:AgentTallyWatchlist` to ena
 | Agent | Process Name |
 |-------|-------------|
 | [Claude Code](https://claude.ai/code) | `claude` |
-| [Cursor](https://cursor.sh) | `cursor` | 
+| [Cursor](https://cursor.sh) | `cursor` |
 | [GitHub Copilot](https://github.com/features/copilot) | `copilot` |
+| [OpenCode](https://opencode.ai) | `opencode` |
 
 Any other CLI tool can be added via `:AgentTallyWatchlist`, just enter the process name as it appears in `ps`.
 
 ## How It Works
 
-Agent Tally monitors file changes in your watched directories. When an AI tool writes to a file:
-- **Tokens In**: Estimated tokens the AI read from the existing file content
-- **Tokens Out**: Estimated tokens the AI generated and wrote to the file
+Agent Tally tracks token usage through two complementary methods:
 
-> **Note**: Token counts are estimates based on file size changes (~4 bytes per token). They represent file-level I/O only and do not include conversation context, system prompts, or extended thinking tokens that AI models may use internally.
+### File I/O Monitoring (all agents)
+
+The daemon watches your project directories for file writes by AI tools. Each write produces an I/O event:
+- **I/O In**: Estimated tokens the agent read from the existing file content
+- **I/O Out**: Estimated tokens the agent generated and wrote to the file
+
+> **Note**: I/O token counts are estimates based on file size changes (~4 bytes per token). They represent file-level activity only and do not include conversation context, system prompts, or extended thinking.
+
+### Actual API Token Tracking (Claude Code & Copilot)
+
+For Claude Code and Copilot, the daemon also parses the agent's local log files to capture real API-level token counts per request:
+- **API In**: Exact input tokens consumed (includes prompt, cache creation, and cache read tokens)
+- **API Out**: Exact output tokens generated (includes extended thinking tokens)
+
+These actual counts are shown in a separate **API Tokens** table on the dashboard alongside the estimated I/O table, so you can compare file-level activity with true model usage.
+
+### Dashboard Tables
+
+The dashboard shows two side-by-side per-process breakdowns with aligned columns:
+
+| Table | Source | What it measures |
+|-------|--------|-----------------|
+| **API Tokens** | Agent log files | Actual API usage (Claude & Copilot only; `-` for others) |
+| **I/O Tokens** | File write events | Estimated tokens based on file size changes (all agents) |
 
 ## Usage
 
