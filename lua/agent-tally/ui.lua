@@ -440,13 +440,14 @@ function M.open()
   local status_result = nil
   local events_result = nil
   local tools_result = nil
+  local tokens_result = nil
   local got_error = false
   local replies = 0
 
   local function try_render()
     replies = replies + 1
 
-    if replies < 3 then
+    if replies < 4 then
       return
     end
 
@@ -463,12 +464,14 @@ function M.open()
       local status = (type(status_result) == "table") and status_result or {}
       local events = (type(events_result) == "table") and events_result or {}
       local tools = (type(tools_result) == "table") and tools_result or {}
+      local tokens = (type(tokens_result) == "table") and tokens_result or {}
 
       state.events_cache = events
       state.tools_cache = tools
+      state.tokens_cache = tokens
 
       -- Build dashboard lines + highlights
-      local lines, hls = format.dashboard(status, state.events_cache, cwd, tools)
+      local lines, hls = format.dashboard(status, state.events_cache, cwd, tools, state.tokens_cache)
       state.current_hls = hls
 
       -- Set on_enter to drill into both recent events and by-file rows.
@@ -614,6 +617,11 @@ function M.open()
     tools_result = result or {}
     try_render()
   end)
+
+  rpc.request(socket, "query-tokens", { cwd_prefix = cwd }, function(_, result)
+    tokens_result = result or {}
+    try_render()
+  end)
 end
 
 --- Close the floating window.
@@ -634,6 +642,7 @@ function M.close()
   state.all_lines = nil
   state.events_cache = nil
   state.tools_cache = nil
+  state.tokens_cache = nil
   state.current_hls = nil
   state.socket = nil
   state.cwd = nil

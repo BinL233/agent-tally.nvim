@@ -8,9 +8,11 @@ local M = {}
 ---@param events table[]
 ---@param cwd string
 ---@param tools table[]
+---@param tokens table[] token summaries from query-tokens (agent, tokens_in, tokens_out)
 ---@return string[], table
-function M.dashboard(status, events, cwd, tools)
+function M.dashboard(status, events, cwd, tools, tokens)
   events = events or {}
+  tokens = tokens or {}
   local all_lines = {}
   local all_hls   = {}
 
@@ -27,6 +29,8 @@ function M.dashboard(status, events, cwd, tools)
   end
 
   append(sections.overview(status, events, cwd))
+  append({ "" }, {})
+  append(sections.by_process_tokens(events, tokens))
   append({ "" }, {})
   append(sections.by_process(events))
   append({ "" }, {})

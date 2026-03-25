@@ -18,22 +18,12 @@ function M.overview(status, events, cwd)
 
   table.insert(lines, "")
 
-  local total_in, total_out = 0, 0
-
-  for _, ev in ipairs(events) do
-    total_in  = total_in  + (ev.tokens_input  or 0)
-    total_out = total_out + (ev.tokens_output or 0)
-  end
-
-  u.labeled_line(lines, hls, "Tokens In",  u.format_number(total_in),            "AgentTallySection2")
-  u.labeled_line(lines, hls, "Tokens Out", u.format_number(total_out),           "AgentTallySection2")
-  u.labeled_line(lines, hls, "Total",      u.format_number(total_in + total_out), "AgentTallySection2")
-  u.labeled_line(lines, hls, "Events",     u.format_number(#events),              "AgentTallySection2")
+  u.labeled_line(lines, hls, "Events", u.format_number(#events), "AgentTallySection2")
 
   return lines, hls
 end
 
---- By-process breakdown table.
+--- By-process I/O token breakdown table (estimated from file writes).
 function M.by_process(events)
   local by = {}
 
@@ -59,7 +49,7 @@ function M.by_process(events)
     return (a.data.input + a.data.output) > (b.data.input + b.data.output)
   end)
 
-  local rows = { { "Process", "Events", "Tokens In", "Tokens Out", "Total" } }
+  local rows = { { "Process", "Events", "I/O In", "I/O Out", "I/O Total" } }
 
   for _, entry in ipairs(sorted) do
     local d = entry.data
@@ -69,6 +59,81 @@ function M.by_process(events)
       u.format_number(d.input),
       u.format_number(d.output),
       u.format_number(d.input + d.output),
+    })
+  end
+
+  local lines, hdr, sep = u.align(rows, { "l", "r", "r", "r", "r" })
+  local hls = {}
+
+  table.insert(hls, { hdr, 0, -1, "AgentTallySection3" })
+  table.insert(hls, { sep, 0, -1, "AgentTallySection3" })
+
+  return lines, hls
+end
+
+--- By-process actual API token table (from query-tokens).
+--- Claude and Copilot show real token counts; other agents show "-".
+function M.by_process_tokens(events, token_summaries)
+  -- Aggregate event counts per process.
+  local by = {}
+
+  for _, ev in ipairs(events) do
+    local name = ev.process_name or "(unknown)"
+    if not by[name] then
+      by[name] = { count = 0 }
+    end
+    by[name].count = by[name].count + 1
+  end
+
+  -- Build a lookup of actual token data keyed by agent name.
+  local token_by_agent = {}
+
+  for _, ts in ipairs(token_summaries or {}) do
+    if ts.agent then
+      token_by_agent[ts.agent] = ts
+    end
+  end
+
+  -- Also include agents that have token data but no file events.
+  for _, ts in ipairs(token_summaries or {}) do
+    if ts.agent and not by[ts.agent] then
+      by[ts.agent] = { count = 0 }
+    end
+  end
+
+  local sorted = {}
+
+  for name, data in pairs(by) do
+    local actual = token_by_agent[name]
+    local sort_val = actual and (actual.tokens_in + actual.tokens_out) or 0
+    table.insert(sorted, { name = name, data = data, actual = actual, sort_val = sort_val })
+  end
+
+  table.sort(sorted, function(a, b)
+    return a.sort_val > b.sort_val
+  end)
+
+  local rows = { { "Process", "Events", "API In", "API Out", "API Total" } }
+
+  for _, entry in ipairs(sorted) do
+    local t_in, t_out, t_total
+
+    if entry.actual then
+      t_in    = u.format_number(entry.actual.tokens_in)
+      t_out   = u.format_number(entry.actual.tokens_out)
+      t_total = u.format_number(entry.actual.tokens_in + entry.actual.tokens_out)
+    else
+      t_in    = "-"
+      t_out   = "-"
+      t_total = "-"
+    end
+
+    table.insert(rows, {
+      entry.name,
+      u.format_number(entry.data.count),
+      t_in,
+      t_out,
+      t_total,
     })
   end
 
