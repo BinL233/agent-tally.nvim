@@ -348,6 +348,84 @@ func (s *SQLiteStore) QueryTools(ctx context.Context, filter ToolFilter) ([]Tool
 	return results, rows.Err()
 }
 
+// BatchInsertTokenUsages records multiple token usage entries in a single transaction.
+// Uses INSERT OR REPLACE so that a later entry with the same request_id (authoritative counts)
+// overwrites any earlier partial row.
+func (s *SQLiteStore) BatchInsertTokenUsages(ctx context.Context, usages []*TokenUsage) error {
+	const q = `INSERT OR REPLACE INTO token_usage
+		(timestamp, agent, session_id, request_id, tokens_in, tokens_out, cwd)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin token usage tx: %w", err)
+	}
+
+	stmt, err := tx.PrepareContext(ctx, q)
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("prepare token usage insert: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, u := range usages {
+		ts := u.Timestamp.UTC().Format("2006-01-02T15:04:05.000")
+		if _, err := stmt.ExecContext(ctx, ts, u.Agent, u.SessionID, u.RequestID, u.TokensIn, u.TokensOut, u.CWD); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("insert token usage: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit token usage: %w", err)
+	}
+
+	return nil
+}
+
+// QueryTokenSummary returns per-agent token totals for the given filter.
+func (s *SQLiteStore) QueryTokenSummary(ctx context.Context, filter TokenFilter) ([]TokenSummary, error) {
+	q := `SELECT agent, SUM(tokens_in), SUM(tokens_out) FROM token_usage WHERE 1=1`
+	var args []any
+
+	if filter.Agent != "" {
+		q += " AND agent = ?"
+		args = append(args, filter.Agent)
+	}
+	if filter.CWDPrefix != "" {
+		q += " AND (cwd = ? OR cwd GLOB ?)"
+		args = append(args, filter.CWDPrefix, filter.CWDPrefix+"/*")
+	}
+	if filter.Since != nil {
+		q += " AND timestamp >= ?"
+		args = append(args, filter.Since.UTC().Format("2006-01-02T15:04:05.000"))
+	}
+
+	q += " GROUP BY agent ORDER BY agent"
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query token summary: %w", err)
+	}
+	defer rows.Close()
+
+	var results []TokenSummary
+
+	for rows.Next() {
+		var r TokenSummary
+		if err := rows.Scan(&r.Agent, &r.TokensIn, &r.TokensOut); err != nil {
+			return nil, fmt.Errorf("scan token summary: %w", err)
+		}
+		results = append(results, r)
+	}
+
+	if results == nil {
+		results = []TokenSummary{}
+	}
+
+	return results, rows.Err()
+}
+
 // GetLogOffset returns the last-processed byte offset for a log file.
 func (s *SQLiteStore) GetLogOffset(ctx context.Context, logPath string) (int64, error) {
 	var offset int64

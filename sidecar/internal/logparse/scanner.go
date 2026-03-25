@@ -179,8 +179,8 @@ func (s *Scanner) getCopilotParser(cwd string) *CopilotParser {
 	return p
 }
 
-// processFile parses a single log file from its last-known offset, inserts new
-// events in a single batch transaction, and updates the offset.
+// processFile parses a single log file from its last-known offset, batch-inserts
+// tool events and token usages, and updates the offset.
 func (s *Scanner) processFile(ctx context.Context, path string, parser Parser) int {
 	offset, err := s.st.GetLogOffset(ctx, path)
 	if err != nil {
@@ -188,7 +188,7 @@ func (s *Scanner) processFile(ctx context.Context, path string, parser Parser) i
 		return 0
 	}
 
-	events, newOffset, err := parser.ParseFrom(path, offset)
+	result, newOffset, err := parser.ParseFrom(path, offset)
 	if err != nil {
 		log.Printf("logparse: parse %s: %v", path, err)
 		return 0
@@ -200,23 +200,42 @@ func (s *Scanner) processFile(ctx context.Context, path string, parser Parser) i
 
 	inserted := 0
 
-	if len(events) > 0 {
-		storeEvents := make([]*store.ToolEvent, len(events))
-		for i := range events {
+	if len(result.ToolEvents) > 0 {
+		storeEvents := make([]*store.ToolEvent, len(result.ToolEvents))
+		for i := range result.ToolEvents {
 			storeEvents[i] = &store.ToolEvent{
-				Timestamp:  events[i].Timestamp,
-				Agent:      events[i].Agent,
-				SessionID:  events[i].SessionID,
-				ToolName:   events[i].ToolName,
-				ToolCallID: events[i].ToolCallID,
-				CWD:        events[i].CWD,
+				Timestamp:  result.ToolEvents[i].Timestamp,
+				Agent:      result.ToolEvents[i].Agent,
+				SessionID:  result.ToolEvents[i].SessionID,
+				ToolName:   result.ToolEvents[i].ToolName,
+				ToolCallID: result.ToolEvents[i].ToolCallID,
+				CWD:        result.ToolEvents[i].CWD,
 			}
 		}
-
 		if err := s.st.BatchInsertToolEvents(ctx, storeEvents); err != nil {
 			log.Printf("logparse: insert skill events: %v", err)
 		} else {
 			inserted = len(storeEvents)
+		}
+	}
+
+	if len(result.TokenUsages) > 0 {
+		storeUsages := make([]*store.TokenUsage, len(result.TokenUsages))
+		for i := range result.TokenUsages {
+			storeUsages[i] = &store.TokenUsage{
+				Timestamp: result.TokenUsages[i].Timestamp,
+				Agent:     result.TokenUsages[i].Agent,
+				SessionID: result.TokenUsages[i].SessionID,
+				RequestID: result.TokenUsages[i].RequestID,
+				TokensIn:  result.TokenUsages[i].TokensIn,
+				TokensOut: result.TokenUsages[i].TokensOut,
+				CWD:       result.TokenUsages[i].CWD,
+			}
+		}
+		if err := s.st.BatchInsertTokenUsages(ctx, storeUsages); err != nil {
+			log.Printf("logparse: insert token usages: %v", err)
+		} else {
+			log.Printf("logparse: %s: +%d token records", path, len(storeUsages))
 		}
 	}
 

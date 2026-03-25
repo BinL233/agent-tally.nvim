@@ -598,6 +598,30 @@ func (d *Daemon) handleConn(ctx context.Context, conn net.Conn) {
 
 		enc.Encode(RPCResponse{Result: map[string]any{"ok": true}})
 
+	case "query-tokens":
+		var filter store.TokenFilter
+
+		if req.Params != nil {
+			json.Unmarshal(req.Params, &filter)
+		}
+
+		// Trigger an on-demand log scan for the cwd so results are fresh.
+		if filter.CWDPrefix != "" {
+			d.logScanner.AddCWD(ctx, filter.CWDPrefix)
+		}
+
+		summaries, err := d.store.QueryTokenSummary(ctx, filter)
+		if err != nil {
+			enc.Encode(RPCResponse{Error: err.Error()})
+			return
+		}
+
+		if summaries == nil {
+			summaries = []store.TokenSummary{}
+		}
+
+		enc.Encode(RPCResponse{Result: summaries})
+
 	default:
 		enc.Encode(RPCResponse{Error: fmt.Sprintf("unknown method: %s", req.Method)})
 	}

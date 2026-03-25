@@ -30,7 +30,18 @@ type copilotLine struct {
 		ToolCallID string `json:"toolCallId"`
 		ToolName   string `json:"toolName"`
 		SessionID  string `json:"sessionId"`
+		// ModelMetrics is present on session.shutdown events.
+		ModelMetrics map[string]copilotModelMetric `json:"modelMetrics"`
 	} `json:"data"`
+}
+
+type copilotModelMetric struct {
+	Usage struct {
+		InputTokens      int `json:"inputTokens"`
+		OutputTokens     int `json:"outputTokens"`
+		CacheReadTokens  int `json:"cacheReadTokens"`
+		CacheWriteTokens int `json:"cacheWriteTokens"`
+	} `json:"usage"`
 }
 
 // titleCase converts a lowercase tool name (e.g. "bash") to TitleCase ("Bash").
@@ -42,21 +53,21 @@ func titleCase(s string) string {
 }
 
 // ParseFrom reads the Copilot events.jsonl from byteOffset and extracts
-// tool.execution_start events.
-func (p *CopilotParser) ParseFrom(path string, byteOffset int64) ([]ToolEvent, int64, error) {
+// tool.execution_start events and session.shutdown token usage.
+func (p *CopilotParser) ParseFrom(path string, byteOffset int64) (ParseResult, int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, byteOffset, err
+		return ParseResult{}, byteOffset, err
 	}
 	defer f.Close()
 
 	if byteOffset > 0 {
 		if _, err := f.Seek(byteOffset, io.SeekStart); err != nil {
-			return nil, byteOffset, err
+			return ParseResult{}, byteOffset, err
 		}
 	}
 
-	var events []ToolEvent
+	var result ParseResult
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(p.buf, len(p.buf))
 
@@ -74,18 +85,20 @@ func (p *CopilotParser) ParseFrom(path string, byteOffset int64) ([]ToolEvent, i
 			continue
 		}
 
-		if entry.Type == "tool.execution_start" && entry.Data.ToolCallID != "" && entry.Data.ToolName != "" {
+		switch entry.Type {
+		case "tool.execution_start":
+			if entry.Data.ToolCallID == "" || entry.Data.ToolName == "" {
+				break
+			}
 			ts, _ := time.Parse(time.RFC3339Nano, entry.Timestamp)
 			if ts.IsZero() {
 				ts = time.Now()
 			}
-
 			sid := entry.Data.SessionID
 			if sid == "" {
 				sid = sessionID
 			}
-
-			events = append(events, ToolEvent{
+			result.ToolEvents = append(result.ToolEvents, ToolEvent{
 				Timestamp:  ts,
 				Agent:      "copilot",
 				SessionID:  sid,
@@ -93,16 +106,40 @@ func (p *CopilotParser) ParseFrom(path string, byteOffset int64) ([]ToolEvent, i
 				ToolCallID: entry.Data.ToolCallID,
 				CWD:        p.cwd,
 			})
+
+		case "session.shutdown":
+			ts, _ := time.Parse(time.RFC3339Nano, entry.Timestamp)
+			if ts.IsZero() {
+				ts = time.Now()
+			}
+			// One TokenUsage per model — request_id = sessionID+":"+model for dedup.
+			for model, metrics := range entry.Data.ModelMetrics {
+				u := metrics.Usage
+				tokensIn := u.InputTokens + u.CacheReadTokens + u.CacheWriteTokens
+				tokensOut := u.OutputTokens
+				if tokensIn == 0 && tokensOut == 0 {
+					continue
+				}
+				result.TokenUsages = append(result.TokenUsages, TokenUsage{
+					Timestamp: ts,
+					Agent:     "copilot",
+					SessionID: sessionID,
+					RequestID: sessionID + ":" + model,
+					TokensIn:  tokensIn,
+					TokensOut: tokensOut,
+					CWD:       p.cwd,
+				})
+			}
 		}
 
 		pos += lineLen
 	}
 
 	if err := scanner.Err(); err != nil && err != io.EOF {
-		return events, pos, err
+		return result, pos, err
 	}
 
-	return events, pos, nil
+	return result, pos, nil
 }
 
 // sessionIDFromPath extracts the session UUID from a path like

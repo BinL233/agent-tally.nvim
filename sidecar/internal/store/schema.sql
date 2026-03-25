@@ -31,3 +31,17 @@ CREATE TABLE IF NOT EXISTS log_offsets (
     log_path    TEXT    PRIMARY KEY,
     byte_offset INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS token_usage (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp     TEXT    NOT NULL,
+    agent         TEXT    NOT NULL,
+    session_id    TEXT    NOT NULL,
+    request_id    TEXT    NOT NULL UNIQUE,
+    tokens_in     INTEGER NOT NULL DEFAULT 0,
+    tokens_out    INTEGER NOT NULL DEFAULT 0,
+    cwd           TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_token_ts    ON token_usage(timestamp);
+CREATE INDEX IF NOT EXISTS idx_token_agent ON token_usage(agent);
+CREATE INDEX IF NOT EXISTS idx_token_cwd   ON token_usage(cwd);
