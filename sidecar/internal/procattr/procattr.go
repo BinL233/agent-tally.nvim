@@ -1,9 +1,7 @@
 package procattr
 
 import (
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +12,12 @@ type ProcessInfo struct {
 	PID  int
 	Name string
 	CWD  string
+}
+
+// rawProc is the minimal process data returned by platform-specific listing.
+type rawProc struct {
+	PID  int
+	Args []string // argv[0] is the binary path; remaining are arguments
 }
 
 // Scanner periodically scans for running AI processes from the watchlist.
@@ -35,11 +39,21 @@ func NewScanner(names []string) *Scanner {
 	return &Scanner{watchlist: wl, cwdCache: make(map[int]string)}
 }
 
-// Start begins periodic scanning. Call in a goroutine.
+const (
+	baseScanInterval = 2 * time.Second
+	maxScanInterval  = 30 * time.Second
+)
+
+// Start begins periodic scanning with adaptive backoff when no agents are running.
+// The interval doubles every 3 consecutive idle scans, up to maxScanInterval.
+// Resets to baseScanInterval as soon as an agent is detected.
+// Call in a goroutine.
 func (s *Scanner) Start(stop <-chan struct{}) {
 	s.scan()
 
-	ticker := time.NewTicker(2 * time.Second)
+	interval := baseScanInterval
+	idleScans := 0
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -48,6 +62,26 @@ func (s *Scanner) Start(stop <-chan struct{}) {
 			return
 		case <-ticker.C:
 			s.scan()
+			procs := s.Running()
+			if len(procs) == 0 {
+				idleScans++
+				if idleScans >= 3 {
+					newInterval := interval * 2
+					if newInterval > maxScanInterval {
+						newInterval = maxScanInterval
+					}
+					if newInterval != interval {
+						interval = newInterval
+						ticker.Reset(interval)
+					}
+				}
+			} else if interval != baseScanInterval {
+				idleScans = 0
+				interval = baseScanInterval
+				ticker.Reset(interval)
+			} else {
+				idleScans = 0
+			}
 		}
 	}
 }
@@ -127,11 +161,9 @@ func (s *Scanner) AttributeAll(filePath string) []ProcessInfo {
 }
 
 // scan queries the system for running processes matching the watchlist.
-// Uses `ps -eo pid,args` so the full command line is available for
-// path-based matching (e.g. Cursor's agent binary is named "agent" but its
-// args reference a "cursor-agent" path component).
+// getRawProcs is platform-specific (getprocs_linux.go / getprocs_other.go).
 func (s *Scanner) scan() {
-	out, err := exec.Command("ps", "-eo", "pid,args").Output()
+	procs, err := getRawProcs()
 	if err != nil {
 		return
 	}
@@ -143,41 +175,30 @@ func (s *Scanner) scan() {
 	var found []ProcessInfo
 	newCache := make(map[int]string)
 
-	for _, line := range strings.Split(string(out), "\n") {
-		fields := strings.Fields(line)
-
-		if len(fields) < 2 {
+	for _, rp := range procs {
+		if len(rp.Args) == 0 {
 			continue
 		}
 
-		pid, err := strconv.Atoi(fields[0])
-		if err != nil {
-			continue
-		}
-
-		// fields[1] is the binary path; extract the basename.
-		name := fields[1]
+		// rp.Args[0] is the binary path; extract the basename.
+		name := rp.Args[0]
 		if idx := strings.LastIndex(name, "/"); idx >= 0 {
 			name = name[idx+1:]
 		}
 
 		// If comm doesn't match, fall back to the real executable name.
-		// Some programs (e.g. Python-based tools) rename their thread to
-		// something like "MainThread", hiding the binary name from comm.
 		matchName := name
 		if !wl[name] {
-			if exe := resolveExeName(pid); exe != "" && wl[exe] {
+			if exe := resolveExeName(rp.PID); exe != "" && wl[exe] {
 				matchName = exe
 			}
 		}
 
 		// Last resort: check the full command line for path components that
-		// match a watchlist entry. This catches tools like Cursor whose AI
-		// agent binary is named "agent" but whose args contain "cursor-agent".
-		if !wl[matchName] && len(fields) > 1 {
-			fullArgs := strings.Join(fields[1:], " ")
+		// match a watchlist entry (e.g. Cursor's agent binary).
+		if !wl[matchName] {
+			fullArgs := strings.Join(rp.Args, " ")
 			for key := range wl {
-				// Match "/key-" (e.g. "cursor-agent") or "/key/" or "/key " etc.
 				if strings.Contains(fullArgs, "/"+key+"-") ||
 					strings.Contains(fullArgs, "/"+key+"/") ||
 					strings.Contains(fullArgs, "/"+key+" ") {
@@ -189,12 +210,12 @@ func (s *Scanner) scan() {
 
 		if wl[matchName] {
 			// Reuse cached CWD if available, only resolve for new PIDs.
-			cwd, cached := s.cwdCache[pid]
+			cwd, cached := s.cwdCache[rp.PID]
 			if !cached {
-				cwd = resolveCWD(pid)
+				cwd = resolveCWD(rp.PID)
 			}
-			found = append(found, ProcessInfo{PID: pid, Name: matchName, CWD: cwd})
-			newCache[pid] = cwd
+			found = append(found, ProcessInfo{PID: rp.PID, Name: matchName, CWD: cwd})
+			newCache[rp.PID] = cwd
 		}
 	}
 

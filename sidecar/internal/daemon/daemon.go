@@ -7,10 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -24,12 +21,13 @@ import (
 
 // Daemon orchestrates the file watcher, store, process scanner, and IPC socket.
 type Daemon struct {
-	cfg        *config.Config
-	store      store.Store
-	watcher    watcher.Watcher
-	scanner    *procattr.Scanner
-	estimator  *tokencount.Estimator
-	logScanner *logparse.Scanner
+	cfg         *config.Config
+	store       store.Store
+	watcher     watcher.Watcher
+	scanner     *procattr.Scanner
+	estimator   *tokencount.Estimator
+	logScanner  *logparse.Scanner
+	fileTracker *procattr.FileTracker
 
 	listener net.Listener
 	cancel   context.CancelFunc
@@ -50,12 +48,13 @@ func New(cfg *config.Config) (*Daemon, error) {
 	}
 
 	return &Daemon{
-		cfg:        cfg,
-		store:      st,
-		watcher:    w,
-		scanner:    procattr.NewScanner(cfg.Watchlist),
-		estimator:  tokencount.NewEstimator(),
-		logScanner: logparse.NewScanner(st, cfg.WatchPaths, cfg.LogScanInterval),
+		cfg:         cfg,
+		store:       st,
+		watcher:     w,
+		scanner:     procattr.NewScanner(cfg.Watchlist),
+		estimator:   tokencount.NewEstimator(),
+		logScanner:  logparse.NewScanner(st, cfg.WatchPaths, cfg.LogScanInterval),
+		fileTracker: procattr.NewFileTracker(time.Second),
 	}, nil
 }
 
@@ -85,7 +84,14 @@ func (d *Daemon) Start(ctx context.Context) error {
 		d.scanner.Start(scanStop)
 	}()
 
-	// When context is cancelled, stop the scanner.
+	// Start file tracker goroutine (polls lsof when multiple agents share a CWD).
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		d.fileTracker.Start(d.scanner, scanStop)
+	}()
+
+	// When context is cancelled, stop the scanner and file tracker.
 	go func() {
 		<-ctx.Done()
 		close(scanStop)
@@ -114,6 +120,13 @@ func (d *Daemon) Start(ctx context.Context) error {
 	go func() {
 		defer d.wg.Done()
 		d.logScanner.Start(ctx)
+	}()
+
+	// Start estimator pruning goroutine (evicts stale token snapshots every 10m).
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		d.estimator.StartPruning(ctx)
 	}()
 
 	// Start IPC socket.
@@ -149,42 +162,55 @@ func (d *Daemon) Stop() {
 	log.Println("agent-tallyd stopped")
 }
 
-// lsofAttribute runs lsof to find which candidate process has filePath open.
-// This is used when CWD matching produces a tie between multiple processes.
-// Returns the matching candidate, or an empty ProcessInfo if none found.
-func lsofAttribute(candidates []procattr.ProcessInfo, filePath string) procattr.ProcessInfo {
-	out, err := exec.Command("lsof", "-t", filePath).Output()
-	if err != nil || len(out) == 0 {
-		return procattr.ProcessInfo{}
-	}
-
-	pidSet := make(map[int]bool)
-
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
-			pidSet[pid] = true
-		}
-	}
-
-	for _, p := range candidates {
-		if pidSet[p.PID] {
-			return p
-		}
-	}
-
-	return procattr.ProcessInfo{}
-}
-
 // processEvents reads watcher events, attributes them to processes,
-// estimates tokens, and persists them.
+// estimates tokens, and persists them in batches.
 func (d *Daemon) processEvents(ctx context.Context, events <-chan watcher.Event) {
+	const (
+		batchSize    = 50
+		batchTimeout = 200 * time.Millisecond
+	)
+
+	batch := make([]*store.Event, 0, batchSize)
+	flushTimer := time.NewTimer(batchTimeout)
+	defer flushTimer.Stop()
+
+	doFlush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		if err := d.store.BatchInsertEvents(ctx, batch); err != nil {
+			log.Printf("failed to batch store events: %v", err)
+		} else {
+			for _, e := range batch {
+				log.Printf("event: %s wrote %s (+%d tokens)", e.ProcessName, e.FilePath, e.TokensOutput)
+			}
+		}
+		batch = batch[:0]
+	}
+
+	resetTimer := func() {
+		if !flushTimer.Stop() {
+			select {
+			case <-flushTimer.C:
+			default:
+			}
+		}
+		flushTimer.Reset(batchTimeout)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
+			doFlush()
 			return
+
+		case <-flushTimer.C:
+			doFlush()
+			flushTimer.Reset(batchTimeout)
 
 		case ev, ok := <-events:
 			if !ok {
+				doFlush()
 				return
 			}
 
@@ -195,19 +221,20 @@ func (d *Daemon) processEvents(ctx context.Context, events <-chan watcher.Event)
 				continue
 			}
 
-			// When multiple processes share the same CWD, use lsof to find
-			// which one actually has the file open right now.
+			// Resolve tie: check the FileTracker's open-file cache (non-blocking).
+			// If it misses, request an on-demand lsof poll for future events and
+			// fall back to the first candidate.
 			var proc procattr.ProcessInfo
 			if len(candidates) == 1 {
 				proc = candidates[0]
 			} else {
-				proc = lsofAttribute(candidates, ev.FilePath)
+				proc = d.fileTracker.RecentWriter(ev.FilePath)
 				if proc.Name == "" {
-					proc = candidates[0] // lsof missed it (file already closed); take first
+					d.fileTracker.RequestPoll()
+					proc = candidates[0]
 				}
 			}
 
-			// If no AI process is responsible, skip this event.
 			if proc.Name == "" {
 				continue
 			}
@@ -219,19 +246,18 @@ func (d *Daemon) processEvents(ctx context.Context, events <-chan watcher.Event)
 				continue
 			}
 
-			storeEvent := &store.Event{
+			batch = append(batch, &store.Event{
 				Timestamp:    ev.Timestamp,
 				PID:          proc.PID,
 				ProcessName:  proc.Name,
 				FilePath:     ev.FilePath,
 				TokensInput:  delta.TokensInput,
 				TokensOutput: delta.TokensOutput,
-			}
+			})
 
-			if err := d.store.InsertEvent(ctx, storeEvent); err != nil {
-				log.Printf("failed to store event: %v", err)
-			} else {
-				log.Printf("event: %s wrote %s (+%d tokens)", proc.Name, ev.FilePath, delta.TokensOutput)
+			if len(batch) >= batchSize {
+				doFlush()
+				resetTimer()
 			}
 		}
 	}

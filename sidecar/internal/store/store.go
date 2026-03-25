@@ -72,6 +72,9 @@ type Store interface {
 	// InsertEvent records a new event.
 	InsertEvent(ctx context.Context, e *Event) error
 
+	// BatchInsertEvents records multiple events in a single transaction.
+	BatchInsertEvents(ctx context.Context, events []*Event) error
+
 	// Query returns events matching the filter.
 	Query(ctx context.Context, filter QueryFilter) ([]Event, error)
 
@@ -89,6 +92,9 @@ type Store interface {
 
 	// InsertToolEvent records a tool invocation. Silently ignores duplicates.
 	InsertToolEvent(ctx context.Context, e *ToolEvent) error
+
+	// BatchInsertToolEvents records multiple tool events in a single transaction, ignoring duplicates.
+	BatchInsertToolEvents(ctx context.Context, events []*ToolEvent) error
 
 	// QueryTools returns aggregated tool-use counts matching the filter.
 	QueryTools(ctx context.Context, filter ToolFilter) ([]ToolSummary, error)

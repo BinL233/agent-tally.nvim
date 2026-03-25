@@ -9,7 +9,15 @@ import (
 )
 
 // ClaudeParser parses Claude Code JSONL session log files.
-type ClaudeParser struct{}
+// buf is allocated once and reused across ParseFrom calls to reduce GC pressure.
+type ClaudeParser struct {
+	buf []byte
+}
+
+// NewClaudeParser creates a ClaudeParser with a reusable 4 MiB line buffer.
+func NewClaudeParser() *ClaudeParser {
+	return &ClaudeParser{buf: make([]byte, 4*1024*1024)}
+}
 
 // claudeLine is the minimal shape of a Claude JSONL entry we care about.
 type claudeLine struct {
@@ -43,7 +51,7 @@ func (p *ClaudeParser) ParseFrom(path string, byteOffset int64) ([]ToolEvent, in
 
 	var events []ToolEvent
 	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 4*1024*1024), 4*1024*1024) // 4 MiB per line
+	scanner.Buffer(p.buf, len(p.buf))
 
 	pos := byteOffset
 

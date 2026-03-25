@@ -221,6 +221,71 @@ func (s *SQLiteStore) QueryByDay(ctx context.Context, filter QueryFilter) ([]Day
 	return results, rows.Err()
 }
 
+// BatchInsertEvents records multiple events in a single transaction.
+func (s *SQLiteStore) BatchInsertEvents(ctx context.Context, events []*Event) error {
+	const q = `INSERT INTO events (timestamp, pid, process_name, file_path, tokens_input, tokens_output)
+		VALUES (?, ?, ?, ?, ?, ?)`
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin batch tx: %w", err)
+	}
+
+	stmt, err := tx.PrepareContext(ctx, q)
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("prepare batch insert: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, e := range events {
+		ts := e.Timestamp.UTC().Format("2006-01-02T15:04:05.000")
+		if _, err := stmt.ExecContext(ctx, ts, e.PID, e.ProcessName, e.FilePath, e.TokensInput, e.TokensOutput); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("batch insert event: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit batch events: %w", err)
+	}
+
+	return nil
+}
+
+// BatchInsertToolEvents records multiple tool events in a single transaction, ignoring duplicates.
+func (s *SQLiteStore) BatchInsertToolEvents(ctx context.Context, events []*ToolEvent) error {
+	const q = `INSERT OR IGNORE INTO skill_events
+		(timestamp, agent, session_id, tool_name, tool_call_id, cwd)
+		VALUES (?, ?, ?, ?, ?, ?)`
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin batch tool tx: %w", err)
+	}
+
+	stmt, err := tx.PrepareContext(ctx, q)
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("prepare batch tool insert: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, e := range events {
+		ts := e.Timestamp.UTC().Format("2006-01-02T15:04:05.000")
+		if _, err := stmt.ExecContext(ctx, ts, e.Agent, e.SessionID, e.ToolName, e.ToolCallID, e.CWD); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("batch insert tool event: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit batch tool events: %w", err)
+	}
+
+	return nil
+}
+
 // InsertToolEvent records a skill/tool invocation, ignoring duplicates.
 func (s *SQLiteStore) InsertToolEvent(ctx context.Context, e *ToolEvent) error {
 	const q = `INSERT OR IGNORE INTO skill_events

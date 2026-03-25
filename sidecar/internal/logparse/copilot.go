@@ -10,14 +10,16 @@ import (
 )
 
 // CopilotParser parses Copilot CLI event log files.
+// buf is allocated once per parser instance and reused across ParseFrom calls.
 type CopilotParser struct {
 	// cwd is pre-resolved via DiscoverCopilot so we don't re-read workspace.yaml.
 	cwd string
+	buf []byte
 }
 
-// NewCopilotParser creates a parser for a specific session cwd.
+// NewCopilotParser creates a parser for a specific session cwd with a reusable 1 MiB buffer.
 func NewCopilotParser(cwd string) *CopilotParser {
-	return &CopilotParser{cwd: cwd}
+	return &CopilotParser{cwd: cwd, buf: make([]byte, 1024*1024)}
 }
 
 // copilotLine is the minimal shape of a Copilot events.jsonl entry.
@@ -56,7 +58,7 @@ func (p *CopilotParser) ParseFrom(path string, byteOffset int64) ([]ToolEvent, i
 
 	var events []ToolEvent
 	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	scanner.Buffer(p.buf, len(p.buf))
 
 	// Extract session ID from the filename's parent dir name.
 	sessionID := sessionIDFromPath(path)
