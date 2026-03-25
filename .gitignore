@@ -3,3 +3,4 @@ sidecar/build/
 *.db-shm
 *.db-wal
 mock.lua
+.DS_Store

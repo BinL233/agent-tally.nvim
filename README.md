@@ -1,24 +1,18 @@
 # agent-tally.nvim
 
-A Neovim plugin and system-wide daemon that tracks AI token usage for your current project directory. Monitors files read (tokens in) and written (tokens out) by AI coding assistants like Claude Code, Cursor, Copilot, and more.
+<p align="center">
+    <a href="https://neovim.io/" target="_blank"><img src="https://img.shields.io/static/v1?style=flat-square&label=Neovim&message=v0.10%2b&logo=neovim&labelColor=282828&logoColor=8faa80&color=414b32" alt="Neovim: v0.10+" /></a>
+    <a href="https://github.com/BinL233/agent-tally.nvim/actions/workflows/ci.yml" target="_blank"><img src="https://img.shields.io/github/actions/workflow/status/BinL233/agent-tally.nvim/ci.yml?style=flat-square&label=CI&event=push" alt="CI" /></a> 
+    <img src="https://img.shields.io/badge/macOS-supported-blue?style=flat-square&logo=apple&logoColor=white" alt="macOS" />
+    <img src="https://img.shields.io/badge/Linux-supported-blue?style=flat-square&logo=linux&logoColor=white" alt="Linux" />
 
-**Dashboard** — Your high-level summary of tokens, agents, and top files at a glance.
+</p>
+
+A Neovim plugin and system-wide daemon that tracks AI token usage to your files and tool activity across your projects. It monitors file I/O and command execution from AI coding assistants like Claude Code, Cursor, and Copilot, giving you a clear picture of Tokens In / Token Out, and the specific tools used to get the job done.
+
 ![Dashboard](images/Dashboard.png)
 
-**Heatmap** — Daily token activity heatmap. You can generate it with your choice of scope, agent, and metric.
 ![Heatmap](images/Heatmap.png)
-
-**Agent detail** — Deep dive into an agent’s token history and file interactions.
-![AgentDetail](images/AgentDetail.png)
-
-**File detail** — Track exactly who edited a file, when, and the associated token cost.
-![FileDetail](images/FileDetail.png)
-
-**Tool usage** — Aggregated count of every tool call (Read, Edit, Bash, Grep, …) made by each agent.
-![ToolUsage](images/ToolUsage.png)
-
-**All events** — A complete, chronological log of every system event and timestamp.
-![AllEvents](images/AllEvents.png)
 
 ## Requirements
 
@@ -193,10 +187,6 @@ require("agent-tally").setup({
   },
 })
 ```
-
-## TODO
-
-- [ ] avante.nvim integration
 
 ## License
 [MIT](LICENSE)
