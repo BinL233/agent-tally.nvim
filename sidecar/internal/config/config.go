@@ -49,6 +49,7 @@ func Default() *Config {
 			"claude",
 			"copilot",
 			"cursor",
+			"opencode",
 		},
 		WatchPaths: []string{cwd},
 		ExcludeDirs: []string{

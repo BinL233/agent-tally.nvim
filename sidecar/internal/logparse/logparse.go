@@ -13,8 +13,26 @@ type ToolEvent struct {
 	CWD        string
 }
 
+// TokenUsage holds actual API token consumption for a single request.
+// tokens_in = input + cache_creation + cache_read; tokens_out = output (incl. thinking).
+type TokenUsage struct {
+	Timestamp time.Time
+	Agent     string
+	SessionID string
+	RequestID string // dedup key (Claude: requestId; Copilot: sessionId+":"+model)
+	TokensIn  int
+	TokensOut int
+	CWD       string
+}
+
+// ParseResult holds all events extracted from a single log file pass.
+type ParseResult struct {
+	ToolEvents  []ToolEvent
+	TokenUsages []TokenUsage
+}
+
 // Parser reads a JSONL log file from a given byte offset and returns new
-// tool events and the new offset to resume from on the next call.
+// tool events, token usage records, and the new offset to resume from on the next call.
 type Parser interface {
-	ParseFrom(path string, byteOffset int64) (events []ToolEvent, newOffset int64, err error)
+	ParseFrom(path string, byteOffset int64) (ParseResult, int64, error)
 }

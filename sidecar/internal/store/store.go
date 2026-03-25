@@ -57,6 +57,33 @@ type ToolFilter struct {
 	Limit     int        `json:"limit"`
 }
 
+// TokenUsage holds actual API token consumption for a single request.
+type TokenUsage struct {
+	ID        int64     `json:"id"`
+	Timestamp time.Time `json:"timestamp"`
+	Agent     string    `json:"agent"`
+	SessionID string    `json:"session_id"`
+	RequestID string    `json:"request_id"` // unique per API call — used for dedup
+	TokensIn  int       `json:"tokens_in"`  // input + cache_creation + cache_read
+	TokensOut int       `json:"tokens_out"` // output (includes thinking)
+	CWD       string    `json:"cwd"`
+}
+
+// TokenSummary holds aggregated token data for one agent, scoped to a project.
+type TokenSummary struct {
+	Agent     string `json:"agent"`
+	TokensIn  int    `json:"tokens_in"`
+	TokensOut int    `json:"tokens_out"`
+}
+
+// TokenFilter controls which token_usage rows are returned.
+type TokenFilter struct {
+	Agent     string     `json:"agent"`
+	CWDPrefix string     `json:"cwd_prefix"`
+	Since     *time.Time `json:"since"`
+	Limit     int        `json:"limit"`
+}
+
 // DaySummary holds aggregated token data for a single calendar day.
 type DaySummary struct {
 	Day       string `json:"day"`        // "2025-04-15"
@@ -71,6 +98,9 @@ type Store interface {
 
 	// InsertEvent records a new event.
 	InsertEvent(ctx context.Context, e *Event) error
+
+	// BatchInsertEvents records multiple events in a single transaction.
+	BatchInsertEvents(ctx context.Context, events []*Event) error
 
 	// Query returns events matching the filter.
 	Query(ctx context.Context, filter QueryFilter) ([]Event, error)
@@ -90,8 +120,20 @@ type Store interface {
 	// InsertToolEvent records a tool invocation. Silently ignores duplicates.
 	InsertToolEvent(ctx context.Context, e *ToolEvent) error
 
+	// BatchInsertToolEvents records multiple tool events in a single transaction, ignoring duplicates.
+	BatchInsertToolEvents(ctx context.Context, events []*ToolEvent) error
+
 	// QueryTools returns aggregated tool-use counts matching the filter.
 	QueryTools(ctx context.Context, filter ToolFilter) ([]ToolSummary, error)
+
+	// BatchInsertTokenUsages records multiple token usage records, replacing duplicates by request_id.
+	BatchInsertTokenUsages(ctx context.Context, usages []*TokenUsage) error
+
+	// QueryTokenSummary returns per-agent token totals matching the filter.
+	QueryTokenSummary(ctx context.Context, filter TokenFilter) ([]TokenSummary, error)
+
+	// QueryTokenByDay returns actual API token totals grouped by calendar day.
+	QueryTokenByDay(ctx context.Context, filter TokenFilter) ([]DaySummary, error)
 
 	// GetLogOffset returns the byte offset of the last-processed position in a log file.
 	GetLogOffset(ctx context.Context, logPath string) (int64, error)

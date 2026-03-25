@@ -3,8 +3,9 @@ local u = require("agent-tally.format.util")
 local M = {}
 
 --- Overview: daemon info + token summary.
-function M.overview(status, events, cwd)
+function M.overview(status, events, cwd, token_summaries)
   events = events or {}
+  token_summaries = token_summaries or {}
   local lines = {}
   local hls = {}
 
@@ -18,23 +19,25 @@ function M.overview(status, events, cwd)
 
   table.insert(lines, "")
 
-  local total_in, total_out = 0, 0
-
+  local io_total = 0
   for _, ev in ipairs(events) do
-    total_in  = total_in  + (ev.tokens_input  or 0)
-    total_out = total_out + (ev.tokens_output or 0)
+    io_total = io_total + (ev.tokens_input or 0) + (ev.tokens_output or 0)
   end
 
-  u.labeled_line(lines, hls, "Tokens In",  u.format_number(total_in),            "AgentTallySection2")
-  u.labeled_line(lines, hls, "Tokens Out", u.format_number(total_out),           "AgentTallySection2")
-  u.labeled_line(lines, hls, "Total",      u.format_number(total_in + total_out), "AgentTallySection2")
-  u.labeled_line(lines, hls, "Events",     u.format_number(#events),              "AgentTallySection2")
+  local api_total = 0
+  for _, ts in ipairs(token_summaries) do
+    api_total = api_total + (ts.tokens_in or 0) + (ts.tokens_out or 0)
+  end
+
+  u.labeled_line(lines, hls, "All Events", u.format_number(#events),    "AgentTallySection2")
+  u.labeled_line(lines, hls, "API Total",  u.format_number(api_total),  "AgentTallySection2")
+  u.labeled_line(lines, hls, "I/O Total",  u.format_number(io_total),   "AgentTallySection2")
 
   return lines, hls
 end
 
---- By-process breakdown table.
-function M.by_process(events)
+--- Build the rows for the I/O token table (no rendering).
+local function build_io_rows(events)
   local by = {}
 
   for _, ev in ipairs(events) do
@@ -59,7 +62,7 @@ function M.by_process(events)
     return (a.data.input + a.data.output) > (b.data.input + b.data.output)
   end)
 
-  local rows = { { "Process", "Events", "Tokens In", "Tokens Out", "Total" } }
+  local rows = { { "Process", "Events", "I/O In", "I/O Out", "I/O Total" } }
 
   for _, entry in ipairs(sorted) do
     local d = entry.data
@@ -72,13 +75,104 @@ function M.by_process(events)
     })
   end
 
-  local lines, hdr, sep = u.align(rows, { "l", "r", "r", "r", "r" })
+  return rows
+end
+
+--- Build the rows for the API token table (no rendering).
+local function build_api_rows(events, token_summaries)
+  local by = {}
+
+  for _, ev in ipairs(events) do
+    local name = ev.process_name or "(unknown)"
+    if not by[name] then
+      by[name] = { count = 0 }
+    end
+    by[name].count = by[name].count + 1
+  end
+
+  local token_by_agent = {}
+
+  for _, ts in ipairs(token_summaries or {}) do
+    if ts.agent then
+      token_by_agent[ts.agent] = ts
+    end
+  end
+
+  for _, ts in ipairs(token_summaries or {}) do
+    if ts.agent and not by[ts.agent] then
+      by[ts.agent] = { count = 0 }
+    end
+  end
+
+  local sorted = {}
+
+  for name, data in pairs(by) do
+    local actual = token_by_agent[name]
+    local sort_val = actual and (actual.tokens_in + actual.tokens_out) or 0
+    table.insert(sorted, { name = name, data = data, actual = actual, sort_val = sort_val })
+  end
+
+  table.sort(sorted, function(a, b)
+    return a.sort_val > b.sort_val
+  end)
+
+  local rows = { { "Process", "Events", "API In", "API Out", "API Total" } }
+
+  for _, entry in ipairs(sorted) do
+    local t_in, t_out, t_total
+
+    if entry.actual then
+      t_in    = u.format_number(entry.actual.tokens_in)
+      t_out   = u.format_number(entry.actual.tokens_out)
+      t_total = u.format_number(entry.actual.tokens_in + entry.actual.tokens_out)
+    else
+      t_in    = "-"
+      t_out   = "-"
+      t_total = "-"
+    end
+
+    table.insert(rows, {
+      entry.name,
+      u.format_number(entry.data.count),
+      t_in,
+      t_out,
+      t_total,
+    })
+  end
+
+  return rows
+end
+
+--- By-process I/O token breakdown table (estimated from file writes).
+--- Pass shared_widths to align columns with the API token table.
+function M.by_process(events, shared_widths)
+  local rows = build_io_rows(events)
+  local lines, hdr, sep = u.align(rows, { "l", "r", "r", "r", "r" }, shared_widths)
   local hls = {}
 
   table.insert(hls, { hdr, 0, -1, "AgentTallySection3" })
   table.insert(hls, { sep, 0, -1, "AgentTallySection3" })
 
   return lines, hls
+end
+
+--- By-process actual API token table (from query-tokens).
+--- Claude and Copilot show real token counts; other agents show "-".
+--- Pass shared_widths to align columns with the I/O token table.
+function M.by_process_tokens(events, token_summaries, shared_widths)
+  local rows = build_api_rows(events, token_summaries)
+  local lines, hdr, sep = u.align(rows, { "l", "r", "r", "r", "r" }, shared_widths)
+  local hls = {}
+
+  table.insert(hls, { hdr, 0, -1, "AgentTallySection3" })
+  table.insert(hls, { sep, 0, -1, "AgentTallySection3" })
+
+  return lines, hls
+end
+
+--- Shared column widths for the two purple process tables.
+function M.process_table_widths(events, token_summaries)
+  return u.compute_widths(build_api_rows(events, token_summaries), build_io_rows(events))
 end
 
 --- Per-file token breakdown table.

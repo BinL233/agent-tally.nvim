@@ -12,7 +12,7 @@
 
 </p>
 
-A Neovim plugin and system-wide daemon that tracks AI token usage to your files and tool activity across your projects. It monitors file I/O and command execution from AI coding assistants like Claude Code, Cursor, and Copilot, giving you a clear picture of Tokens In / Token Out, and the specific tools used to get the job done.
+A Neovim plugin and system-wide daemon that tracks AI token usage to your files and tool activity across your projects. It monitors file I/O and command execution from AI coding assistants like Claude Code, Cursor, Copilot, and OpenCode, giving you a clear picture of Tokens In / Token Out, and the specific tools used to get the job done.
 
 ![Dashboard](images/Dashboard.png)
 
@@ -95,18 +95,39 @@ The following agents are monitored by default. Use `:AgentTallyWatchlist` to ena
 | Agent | Process Name |
 |-------|-------------|
 | [Claude Code](https://claude.ai/code) | `claude` |
-| [Cursor](https://cursor.sh) | `cursor` | 
+| [Cursor](https://cursor.sh) | `cursor` |
 | [GitHub Copilot](https://github.com/features/copilot) | `copilot` |
+| [OpenCode](https://opencode.ai) | `opencode` |
 
 Any other CLI tool can be added via `:AgentTallyWatchlist`, just enter the process name as it appears in `ps`.
 
 ## How It Works
 
-Agent Tally monitors file changes in your watched directories. When an AI tool writes to a file:
-- **Tokens In**: Estimated tokens the AI read from the existing file content
-- **Tokens Out**: Estimated tokens the AI generated and wrote to the file
+Agent Tally tracks token usage through two complementary methods:
 
-> **Note**: Token counts are estimates based on file size changes (~4 bytes per token). They represent file-level I/O only and do not include conversation context, system prompts, or extended thinking tokens that AI models may use internally.
+### File I/O Monitoring
+
+The daemon watches your project directories for file writes by AI tools. Each write produces an I/O event:
+- **I/O In**: Estimated tokens the agent read from the existing file content
+- **I/O Out**: Estimated tokens the agent generated and wrote to the file
+
+> **Note**: I/O token counts are estimates based on file size changes (~4 bytes per token). They represent file-level activity only and do not include conversation context, system prompts, or extended thinking.
+
+### Actual API Token Tracking
+
+For Claude Code and Copilot, the daemon also parses the agent's local log files to capture real API-level token counts per request:
+- **API In**: Exact input tokens consumed (includes prompt, cache creation, and cache read tokens)
+- **API Out**: Exact output tokens generated (includes extended thinking tokens)
+
+These actual counts are shown in a separate **API Tokens** table on the dashboard alongside the estimated I/O table, so you can compare file-level activity with true model usage.
+
+### Current Watching Abilities
+| Agent | I/O Tracking | API Tracking |
+| ----- | ------------ | ------------ |
+| Claude Code | ✓ | ✓ |
+| Github Copilot | ✓ | ✓ |
+| Cursor | ✓ | x |
+| OpenCode | ✓ | x |
 
 ## Usage
 
