@@ -67,20 +67,18 @@ lua require("agent-tally").setup()
 :AgentTallyBuild
 ```
 
-Manual Way:
+
+**Manual Way**:
 ```sh
+# Produces `sidecar/build/agent-tallyd`
 cd ~/.local/share/nvim/lazy/agent-tally.nvim  # or wherever your plugin manager clones to
 make build  # Go required
-```
 
-This produces `sidecar/build/agent-tallyd`.
-
-```sh
+# Copies `agent-tallyd` to `~/.local/bin/`.
+# Alternative root bin way: `sudo cp sidecar/build/agent-tallyd /usr/local/bin/`
 sudo make install
 ```
 
-This copies `agent-tallyd` to `~/.local/bin/`.
-Alternative root bin way: `sudo cp sidecar/build/agent-tallyd /usr/local/bin/`
 
 ## Compatible AI Agents
 
