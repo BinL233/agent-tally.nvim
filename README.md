@@ -2,11 +2,13 @@
     <h1>agent-tally.nvim</h1>
 </div>
 
+
 <p align="center">
     <a href="https://neovim.io/" target="_blank"><img src="https://img.shields.io/static/v1?style=flat-square&label=Neovim&message=v0.10%2b&logo=neovim&labelColor=282828&logoColor=8faa80&color=414b32" alt="Neovim: v0.10+" /></a>
     <a href="https://github.com/BinL233/agent-tally.nvim/actions/workflows/ci.yml" target="_blank"><img src="https://img.shields.io/github/actions/workflow/status/BinL233/agent-tally.nvim/ci.yml?style=flat-square&label=CI&event=push" alt="CI" /></a> 
     <img src="https://img.shields.io/badge/macOS-supported-blue?style=flat-square&logo=apple&logoColor=white" alt="macOS" />
     <img src="https://img.shields.io/badge/Linux-supported-blue?style=flat-square&logo=linux&logoColor=white" alt="Linux" />
+
 
 </p>
 
