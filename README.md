@@ -1,4 +1,6 @@
-# agent-tally.nvim
+<div align="center">
+    <h1>agent-tally.nvim</h1>
+</div>
 
 <p align="center">
     <a href="https://neovim.io/" target="_blank"><img src="https://img.shields.io/static/v1?style=flat-square&label=Neovim&message=v0.10%2b&logo=neovim&labelColor=282828&logoColor=8faa80&color=414b32" alt="Neovim: v0.10+" /></a>
