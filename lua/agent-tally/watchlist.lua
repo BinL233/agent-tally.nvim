@@ -30,7 +30,7 @@ local function render()
   table.insert(lines, "  " .. string.rep("─", 30))
   table.insert(hls, { 1, 0, -1, "AgentTallySection1" })
 
-  for i, item in ipairs(state.items) do
+  for _, item in ipairs(state.items) do
     local check = item.enabled and "[x]" or "[ ]"
     local line = "  " .. check .. " " .. item.name
     table.insert(lines, line)
