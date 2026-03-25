@@ -214,6 +214,49 @@ function M.record(opts)
   end)
 end
 
+--- Build and install the agent-tallyd daemon binary.
+function M.build()
+  local source = debug.getinfo(1, "S").source:sub(2) -- strip leading "@"
+  local plugin_root = vim.fn.fnamemodify(source, ":h:h:h")
+
+  vim.notify("agent-tally: building daemon...", vim.log.levels.INFO)
+
+  local build_output = {}
+  vim.fn.jobstart({ "make", "build" }, {
+    cwd = plugin_root,
+    stdout_buffered = true,
+    stderr_buffered = true,
+    on_stdout = function(_, data) vim.list_extend(build_output, data) end,
+    on_stderr = function(_, data) vim.list_extend(build_output, data) end,
+    on_exit = function(_, code)
+      if code ~= 0 then
+        vim.schedule(function()
+          vim.notify("agent-tally: build failed:\n" .. table.concat(build_output, "\n"), vim.log.levels.ERROR)
+        end)
+        return
+      end
+
+      local install_output = {}
+      vim.fn.jobstart({ "make", "install" }, {
+        cwd = plugin_root,
+        stdout_buffered = true,
+        stderr_buffered = true,
+        on_stdout = function(_, data) vim.list_extend(install_output, data) end,
+        on_stderr = function(_, data) vim.list_extend(install_output, data) end,
+        on_exit = function(_, install_code)
+          vim.schedule(function()
+            if install_code == 0 then
+              vim.notify("agent-tally: daemon built and installed\n" .. table.concat(install_output, "\n"), vim.log.levels.INFO)
+            else
+              vim.notify("agent-tally: install failed:\n" .. table.concat(install_output, "\n"), vim.log.levels.ERROR)
+            end
+          end)
+        end,
+      })
+    end,
+  })
+end
+
 --- Clear events for the current working directory (with confirmation).
 function M.clean()
   local cwd = vim.fn.getcwd()

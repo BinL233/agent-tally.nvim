@@ -62,6 +62,12 @@ lua require("agent-tally").setup()
 
 ### 2. Build the sidecar daemon
 
+**Auto Way (Recommended)**:
+```sh 
+:AgentTallyBuild
+```
+
+Manual Way:
 ```sh
 cd ~/.local/share/nvim/lazy/agent-tally.nvim  # or wherever your plugin manager clones to
 make build  # Go required
@@ -69,24 +75,12 @@ make build  # Go required
 
 This produces `sidecar/build/agent-tallyd`.
 
-### 3. Install the daemon binary
-
 ```sh
 sudo make install
 ```
 
-This copies `agent-tallyd` to `/usr/local/bin/` (requires root).
-Alternative: `sudo cp sidecar/build/agent-tallyd /usr/local/bin/`
-
-If you don't have root access, install to your user bin instead:
-
-```sh
-mkdir -p ~/.local/bin
-cp sidecar/build/agent-tallyd ~/.local/bin/agent-tallyd
-```
-
-Then make sure `~/.local/bin` is in your `$PATH` 
-- You can add `export PATH="$HOME/.local/bin:$PATH"` to your shell rc file.
+This copies `agent-tallyd` to `~/.local/bin/`.
+Alternative root bin way: `sudo cp sidecar/build/agent-tallyd /usr/local/bin/`
 
 ## Compatible AI Agents
 
@@ -136,6 +130,7 @@ These actual counts are shown in a separate **API Tokens** table on the dashboar
 | Command                | Description                              |
 |------------------------|------------------------------------------|
 | `:AgentTally`          | Open the dashboard (auto-starts daemon)  |
+| `:AgentTallyBuild`     | Automatically build daemon and setup     |
 | `:AgentTallyStart`     | Start the sidecar daemon manually        |
 | `:AgentTallyStop`      | Stop the sidecar daemon                  |
 | `:AgentTallyStatus`    | Show daemon status and watchlist         |
