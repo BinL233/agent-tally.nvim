@@ -3,6 +3,13 @@ if vim.g.loaded_agent_tally then
 end
 vim.g.loaded_agent_tally = true
 
+-- Ensure ~/.local/bin is in PATH so the daemon binary can be found
+-- even if the user hasn't sourced their shell rc file.
+local local_bin = vim.fn.expand("~/.local/bin")
+if not vim.env.PATH:find(local_bin, 1, true) then
+  vim.env.PATH = local_bin .. ":" .. vim.env.PATH
+end
+
 -- Highlight groups for the dashboard.
 -- Re-applied on ColorScheme so colors survive theme changes.
 local function def_hl(name, opts)
@@ -73,6 +80,10 @@ end, { desc = "Clear agent-tally events for the current directory" })
 vim.api.nvim_create_user_command("AgentTallyCleanAll", function()
   require("agent-tally").clean_all()
 end, { desc = "Clear all agent-tally events from the database" })
+
+vim.api.nvim_create_user_command("AgentTallyBuild", function()
+  require("agent-tally").build()
+end, { desc = "Build and install the agent-tally daemon" })
 
 vim.api.nvim_create_user_command("AgentTallyMockData", function()
   local config = require("agent-tally.config")
