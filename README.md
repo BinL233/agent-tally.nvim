@@ -105,7 +105,7 @@ Any other CLI tool can be added via `:AgentTallyWatchlist`, just enter the proce
 
 Agent Tally tracks token usage through two complementary methods:
 
-### File I/O Monitoring (all agents)
+### File I/O Monitoring
 
 The daemon watches your project directories for file writes by AI tools. Each write produces an I/O event:
 - **I/O In**: Estimated tokens the agent read from the existing file content
@@ -113,7 +113,7 @@ The daemon watches your project directories for file writes by AI tools. Each wr
 
 > **Note**: I/O token counts are estimates based on file size changes (~4 bytes per token). They represent file-level activity only and do not include conversation context, system prompts, or extended thinking.
 
-### Actual API Token Tracking (Claude Code & Copilot)
+### Actual API Token Tracking
 
 For Claude Code and Copilot, the daemon also parses the agent's local log files to capture real API-level token counts per request:
 - **API In**: Exact input tokens consumed (includes prompt, cache creation, and cache read tokens)
