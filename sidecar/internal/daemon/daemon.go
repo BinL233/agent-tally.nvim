@@ -550,6 +550,34 @@ func (d *Daemon) handleConn(ctx context.Context, conn net.Conn) {
 
 		enc.Encode(RPCResponse{Result: days})
 
+	case "query-by-day-api":
+		var filter store.TokenFilter
+
+		if req.Params != nil {
+			json.Unmarshal(req.Params, &filter)
+		}
+
+		if filter.Since == nil {
+			t := time.Now().AddDate(-1, 0, 0)
+			filter.Since = &t
+		}
+
+		if filter.CWDPrefix != "" {
+			d.logScanner.AddCWD(ctx, filter.CWDPrefix)
+		}
+
+		days, err := d.store.QueryTokenByDay(ctx, filter)
+		if err != nil {
+			enc.Encode(RPCResponse{Error: err.Error()})
+			return
+		}
+
+		if days == nil {
+			days = []store.DaySummary{}
+		}
+
+		enc.Encode(RPCResponse{Result: days})
+
 	case "record-tool":
 		var ev store.ToolEvent
 

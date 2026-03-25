@@ -132,6 +132,9 @@ type Store interface {
 	// QueryTokenSummary returns per-agent token totals matching the filter.
 	QueryTokenSummary(ctx context.Context, filter TokenFilter) ([]TokenSummary, error)
 
+	// QueryTokenByDay returns actual API token totals grouped by calendar day.
+	QueryTokenByDay(ctx context.Context, filter TokenFilter) ([]DaySummary, error)
+
 	// GetLogOffset returns the byte offset of the last-processed position in a log file.
 	GetLogOffset(ctx context.Context, logPath string) (int64, error)
 

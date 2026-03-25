@@ -55,17 +55,40 @@ function M.shorten_path(fpath, max_len)
   return fpath
 end
 
+--- Compute per-column widths from one or more row sets.
+---@param ... string[][]  one or more row arrays
+---@return number[]
+function M.compute_widths(...)
+  local widths = {}
+  for _, rows in ipairs({ ... }) do
+    for _, row in ipairs(rows) do
+      for i, cell in ipairs(row) do
+        local len = #tostring(cell)
+        widths[i] = math.max(widths[i] or 0, len)
+      end
+    end
+  end
+  return widths
+end
+
 --- Build aligned lines from rows with header + separator.
 --- First row is treated as the header. Supports per-column alignment.
 ---@param rows string[][]
 ---@param alignments? string[] "l" for left (default), "r" for right per column
+---@param min_widths? number[] minimum width per column (for shared alignment across tables)
 ---@return string[], number, number  (lines, header_row_0idx, sep_row_0idx)
-function M.align(rows, alignments)
+function M.align(rows, alignments, min_widths)
   if #rows == 0 then
     return { "  No data." }, 0, 0
   end
 
   local widths = {}
+
+  if min_widths then
+    for i, w in ipairs(min_widths) do
+      widths[i] = w
+    end
+  end
 
   for _, row in ipairs(rows) do
     for i, cell in ipairs(row) do
@@ -89,7 +112,7 @@ function M.align(rows, alignments)
       end
     end
 
-    table.insert(lines, "  " .. table.concat(parts, "  "))
+    table.insert(lines, "   " .. table.concat(parts, "   "))
 
     if ri == 1 then
       local sep_parts = {}
@@ -98,7 +121,7 @@ function M.align(rows, alignments)
         table.insert(sep_parts, string.rep("─", widths[i]))
       end
 
-      table.insert(lines, "  " .. table.concat(sep_parts, "──"))
+      table.insert(lines, "   " .. table.concat(sep_parts, "───"))
     end
   end
 

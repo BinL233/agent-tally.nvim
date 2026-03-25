@@ -426,6 +426,52 @@ func (s *SQLiteStore) QueryTokenSummary(ctx context.Context, filter TokenFilter)
 	return results, rows.Err()
 }
 
+// QueryTokenByDay returns actual API token totals grouped by calendar day.
+func (s *SQLiteStore) QueryTokenByDay(ctx context.Context, filter TokenFilter) ([]DaySummary, error) {
+	q := `SELECT DATE(timestamp) AS day,
+	             SUM(tokens_in)  AS tokens_in,
+	             SUM(tokens_out) AS tokens_out
+	      FROM token_usage WHERE 1=1`
+	var args []any
+
+	if filter.Agent != "" {
+		q += " AND agent = ?"
+		args = append(args, filter.Agent)
+	}
+	if filter.CWDPrefix != "" {
+		q += " AND (cwd = ? OR cwd GLOB ?)"
+		args = append(args, filter.CWDPrefix, filter.CWDPrefix+"/*")
+	}
+	if filter.Since != nil {
+		q += " AND timestamp >= ?"
+		args = append(args, filter.Since.UTC().Format("2006-01-02T15:04:05.000"))
+	}
+
+	q += " GROUP BY DATE(timestamp) ORDER BY day"
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query token by day: %w", err)
+	}
+	defer rows.Close()
+
+	var results []DaySummary
+
+	for rows.Next() {
+		var r DaySummary
+		if err := rows.Scan(&r.Day, &r.TokensIn, &r.TokensOut); err != nil {
+			return nil, fmt.Errorf("scan token day summary: %w", err)
+		}
+		results = append(results, r)
+	}
+
+	if results == nil {
+		results = []DaySummary{}
+	}
+
+	return results, rows.Err()
+}
+
 // GetLogOffset returns the last-processed byte offset for a log file.
 func (s *SQLiteStore) GetLogOffset(ctx context.Context, logPath string) (int64, error) {
 	var offset int64

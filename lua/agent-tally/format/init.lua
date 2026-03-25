@@ -28,11 +28,12 @@ function M.dashboard(status, events, cwd, tools, tokens)
     end
   end
 
-  append(sections.overview(status, events, cwd))
+  append(sections.overview(status, events, cwd, tokens))
   append({ "" }, {})
-  append(sections.by_process_tokens(events, tokens))
+  local proc_widths = sections.process_table_widths(events, tokens)
+  append(sections.by_process_tokens(events, tokens, proc_widths))
   append({ "" }, {})
-  append(sections.by_process(events))
+  append(sections.by_process(events, proc_widths))
   append({ "" }, {})
 
   append(sections.by_file(events))

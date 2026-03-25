@@ -383,25 +383,40 @@ function M.open()
 
       vim.ui.select({ "This Project", "All Projects" }, { prompt = "Heatmap scope:" }, function(scope)
         if not scope then return end
-        vim.ui.select(agents, { prompt = "Agent:" }, function(agent)
-          if not agent then return end
-          vim.ui.select({ "Tokens In", "Tokens Out", "Total" }, { prompt = "Metric:" }, function(metric)
-            if not metric then return end
+        vim.ui.select({ "API Tokens", "I/O Tokens" }, { prompt = "Source:" }, function(source)
+          if not source then return end
+          vim.ui.select(agents, { prompt = "Agent:" }, function(agent)
+            if not agent then return end
+            vim.ui.select({ "Tokens In", "Tokens Out", "Total" }, { prompt = "Metric:" }, function(metric)
+              if not metric then return end
 
-            local params = {}
-            if scope == "This Project" then params.path_prefix = state.cwd end
-            if agent ~= "All Agents" then params.process_name = agent end
+              local scope_label = scope == "This Project" and state.cwd:match("[^/]+$") or "All Projects"
+              local title = "  Heatmap: " .. (agent == "All Agents" and "All Agents" or agent)
+                         .. " — " .. source .. " / " .. metric .. " (" .. scope_label .. ", past 6 months)"
 
-            local scope_label = scope == "This Project" and state.cwd:match("[^/]+$") or "All Projects"
-            local title = "  Heatmap: " .. (agent == "All Agents" and "All Agents" or agent)
-                       .. " — " .. metric .. " (" .. scope_label .. ", past 6 months)"
-
-            rpc.request(state.socket, "query-by-day", params, function(_, result)
-              vim.schedule(function()
-                if not is_open() then return end
-                local hm_lines, hm_hls = heatmap.render(result or {}, metric, title)
-                push_view(hm_lines, "AgentTally - Heatmap", nil, hm_hls)
-              end)
+              if source == "API Tokens" then
+                local params = {}
+                if scope == "This Project" then params.cwd_prefix = state.cwd end
+                if agent ~= "All Agents" then params.agent = agent end
+                rpc.request(state.socket, "query-by-day-api", params, function(_, result)
+                  vim.schedule(function()
+                    if not is_open() then return end
+                    local hm_lines, hm_hls = heatmap.render(result or {}, metric, title)
+                    push_view(hm_lines, "AgentTally - Heatmap", nil, hm_hls)
+                  end)
+                end)
+              else
+                local params = {}
+                if scope == "This Project" then params.path_prefix = state.cwd end
+                if agent ~= "All Agents" then params.process_name = agent end
+                rpc.request(state.socket, "query-by-day", params, function(_, result)
+                  vim.schedule(function()
+                    if not is_open() then return end
+                    local hm_lines, hm_hls = heatmap.render(result or {}, metric, title)
+                    push_view(hm_lines, "AgentTally - Heatmap", nil, hm_hls)
+                  end)
+                end)
+              end
             end)
           end)
         end)
