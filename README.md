@@ -121,14 +121,13 @@ For Claude Code and Copilot, the daemon also parses the agent's local log files 
 
 These actual counts are shown in a separate **API Tokens** table on the dashboard alongside the estimated I/O table, so you can compare file-level activity with true model usage.
 
-### Dashboard Tables
-
-The dashboard shows two side-by-side per-process breakdowns with aligned columns:
-
-| Table | Source | What it measures |
-|-------|--------|-----------------|
-| **API Tokens** | Agent log files | Actual API usage (Claude & Copilot only; `-` for others) |
-| **I/O Tokens** | File write events | Estimated tokens based on file size changes (all agents) |
+### Current Watching Abilities
+| Agent | I/O Tracking | API Tracking |
+| ----- | ------------ | ------------ |
+| Claude Code | ✓ | ✓ |
+| Github Copilot | ✓ | ✓ |
+| Cursor | ✓ | x |
+| OpenCode | ✓ | x |
 
 ## Usage
 
