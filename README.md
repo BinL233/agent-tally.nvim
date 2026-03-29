@@ -12,8 +12,7 @@
 
 </p>
 
-A Neovim plugin and system-wide daemon that tracks AI token usage to your files and tool activity across your projects. It monitors file I/O and command execution from AI coding assistants like Claude Code, Cursor, Copilot, and OpenCode, giving you a clear picture of Tokens In / Token Out, and the specific tools used to get the job done.
-[space][space]
+A Neovim plugin and system-wide daemon that tracks AI token usage to your files and tool activity across your projects. It monitors file I/O and command execution from AI coding assistants like Claude Code, Cursor, Copilot, and OpenCode, giving you a clear picture of Tokens In / Token Out, and the specific tools used to get the job done.  
 Also, Agent Tally can also inspect `Rules`, `Local Overrides`, `Memories`, `Skills`, `Installed Plugins` of your current project/user.
  
 
