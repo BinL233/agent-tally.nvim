@@ -29,6 +29,16 @@ local function setup_highlights()
   def_hl("AgentTallySection5", { fg = "#ff9e64", bold = true })
   -- Section 6: By Tool table header + separator                →  pink/rose
   def_hl("AgentTallySection6", { fg = "#f7768e", bold = true })
+  -- Config dashboard section header rows: fg matches section color, bg is a dark tint
+  def_hl("AgentTallySection1Header", { fg = "#7dcfff", bg = "#0d2233", bold = true })
+  def_hl("AgentTallySection2Header", { fg = "#e0af68", bg = "#2b1f08", bold = true })
+  def_hl("AgentTallySection3Header", { fg = "#bb9af7", bg = "#1a1230", bold = true })
+  def_hl("AgentTallySection4Header", { fg = "#9ece6a", bg = "#111e0a", bold = true })
+  def_hl("AgentTallySection5Header", { fg = "#ff9e64", bg = "#2a1200", bold = true })
+  -- Tab bar
+  def_hl("AgentTallyTabActive",   { fg = "#c0caf5", bg = "#364a82", bold = true })
+  def_hl("AgentTallyTabInactive", { fg = "#565f89" })
+  def_hl("AgentTallyTabSep",      { fg = "#3b4261" })
   -- Keybind hint line at the bottom                             →  dim/comment
   def_hl("AgentTallyHint",     { link = "Comment" })
   -- Heatmap intensity levels (GitHub-green palette)
@@ -84,6 +94,10 @@ end, { desc = "Clear all agent-tally events from the database" })
 vim.api.nvim_create_user_command("AgentTallyBuild", function()
   require("agent-tally").build()
 end, { desc = "Build and install the agent-tally daemon" })
+
+vim.api.nvim_create_user_command("AgentTallyProjConfig", function()
+  require("agent-tally.projconfig.ui").open()
+end, { desc = "Browse Claude Code project configuration (rules, memory, skills, plugins)" })
 
 vim.api.nvim_create_user_command("AgentTallyMockData", function()
   local config = require("agent-tally.config")

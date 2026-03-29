@@ -18,6 +18,8 @@ A Neovim plugin and system-wide daemon that tracks AI token usage to your files 
 
 ![Heatmap](images/Heatmap.png)
 
+![ProjectConfig](images/ProjectConfig.png)
+
 ## Requirements
 
 - Neovim >= 0.10
