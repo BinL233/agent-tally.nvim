@@ -6,7 +6,7 @@ vim.g.loaded_agent_tally = true
 -- Ensure ~/.local/bin is in PATH so the daemon binary can be found
 -- even if the user hasn't sourced their shell rc file.
 local local_bin = vim.fn.expand("~/.local/bin")
-if not vim.env.PATH:find(local_bin, 1, true) then
+if not (":" .. vim.env.PATH .. ":"):find(":" .. local_bin .. ":", 1, true) then
   vim.env.PATH = local_bin .. ":" .. vim.env.PATH
 end
 

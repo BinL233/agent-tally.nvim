@@ -82,18 +82,11 @@ function M.align(rows, alignments, min_widths)
     return { "  No data." }, 0, 0
   end
 
-  local widths = {}
+  local widths = M.compute_widths(rows)
 
   if min_widths then
     for i, w in ipairs(min_widths) do
-      widths[i] = w
-    end
-  end
-
-  for _, row in ipairs(rows) do
-    for i, cell in ipairs(row) do
-      local len = #tostring(cell)
-      widths[i] = math.max(widths[i] or 0, len)
+      widths[i] = math.max(widths[i] or 0, w)
     end
   end
 

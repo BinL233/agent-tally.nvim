@@ -22,6 +22,7 @@ local state = {
   all_lines = nil,
   events_cache = nil,
   tools_cache = nil,
+  tokens_cache = nil,
   current_hls = nil,
   socket = nil,
   cwd = nil,
@@ -361,6 +362,7 @@ function M.open()
   state.all_lines = nil
   state.events_cache = nil
   state.tools_cache = nil
+  state.tokens_cache = nil
 
   set_keymaps(buf)
 
@@ -441,6 +443,7 @@ function M.open()
       state.all_lines = nil
       state.events_cache = nil
       state.tools_cache = nil
+      state.tokens_cache = nil
       state.current_hls = nil
       state.socket = nil
       state.cwd = nil
