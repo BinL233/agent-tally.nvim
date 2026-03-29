@@ -12,11 +12,16 @@
 
 </p>
 
-A Neovim plugin and system-wide daemon that tracks AI token usage to your files and tool activity across your projects. It monitors file I/O and command execution from AI coding assistants like Claude Code, Cursor, Copilot, and OpenCode, giving you a clear picture of Tokens In / Token Out, and the specific tools used to get the job done.
+A Neovim plugin and system-wide daemon that tracks AI token usage to your files and tool activity across your projects. It monitors file I/O and command execution from AI coding assistants like `Claude Code`, `Cursor`, `Copilot`, and `OpenCode`, giving you a clear picture of Tokens In / Token Out, and the specific tools used to get the job done.  
+
+Also, Agent Tally can also inspect `Rules`, `Local Overrides`, `Memories`, `Skills`, `Installed Plugins` of your current project/user.
+ 
 
 ![Dashboard](images/Dashboard.png)
 
 ![Heatmap](images/Heatmap.png)
+
+![ProjectConfig](images/ProjectConfig.png)
 
 ## Requirements
 
@@ -95,9 +100,10 @@ Any other CLI tool can be added via `:AgentTallyWatchlist`, just enter the proce
 
 ## How It Works
 
-Agent Tally tracks token usage through two complementary methods:
+### File I/O & API Monitoring
 
-### File I/O Monitoring
+`:AgentTally` opens the dashboard.
+Agent Tally tracks token usage through two complementary methods:
 
 The daemon watches your project directories for file writes by AI tools. Each write produces an I/O event:
 - **I/O In**: Estimated tokens the agent read from the existing file content
@@ -105,36 +111,40 @@ The daemon watches your project directories for file writes by AI tools. Each wr
 
 > **Note**: I/O token counts are estimates based on file size changes (~4 bytes per token). They represent file-level activity only and do not include conversation context, system prompts, or extended thinking.
 
-### Actual API Token Tracking
-
 For Claude Code and Copilot, the daemon also parses the agent's local log files to capture real API-level token counts per request:
 - **API In**: Exact input tokens consumed (includes prompt, cache creation, and cache read tokens)
 - **API Out**: Exact output tokens generated (includes extended thinking tokens)
 
 These actual counts are shown in a separate **API Tokens** table on the dashboard alongside the estimated I/O table, so you can compare file-level activity with true model usage.
 
+### Project Config Dashboard
+
+`:AgentTallyProjConfig` opens a multi-agent config inspector that can show `Rules`, `Local Overrides`, `Memories`, `Skills`, `Installed Plugins`.
+
 ### Current Watching Abilities
-| Agent | I/O Tracking | API Tracking |
-| ----- | ------------ | ------------ |
-| Claude Code | ✓ | ✓ |
-| Github Copilot | ✓ | ✓ |
-| Cursor | ✓ | x |
-| OpenCode | ✓ | x |
+| Agent | I/O Tracking | API Tracking | Project Config |
+| ----- | ------------ | ------------ | -------------- |
+| Claude Code | ✓ | ✓ | ✓ |
+| Github Copilot | ✓ | ✓ | ✓ |
+| Cursor | ✓ | ✗ | ✓ |
+| OpenCode | ✓ | ✗ | ✓ |
+
 
 ## Usage
 
 ### Commands
 
-| Command                | Description                              |
-|------------------------|------------------------------------------|
-| `:AgentTally`          | Open the dashboard (auto-starts daemon)  |
-| `:AgentTallyBuild`     | Automatically build daemon and setup     |
-| `:AgentTallyStart`     | Start the sidecar daemon manually        |
-| `:AgentTallyStop`      | Stop the sidecar daemon                  |
-| `:AgentTallyStatus`    | Show daemon status and watchlist         |
-| `:AgentTallyWatchlist` | Toggle which AI tools to monitor         |
-| `:AgentTallyClean`     | Clean recorded events in the current directory | 
-| `:AgentTallyCleanAll`     | Clean all recorded events |
+| Command                  | Description                                              |
+|--------------------------|----------------------------------------------------------|
+| `:AgentTally`            | Open the dashboard (auto-starts daemon)                  |
+| `:AgentTallyBuild`       | Build and install the daemon automatically               |
+| `:AgentTallyStart`       | Start the sidecar daemon manually                        |
+| `:AgentTallyStop`        | Stop the sidecar daemon                                  |
+| `:AgentTallyStatus`      | Show daemon status and watchlist                         |
+| `:AgentTallyWatchlist`   | Toggle which AI tools to monitor                         |
+| `:AgentTallyProjConfig`  | Browse project config for Claude, Cursor, Copilot, OpenCode |
+| `:AgentTallyClean`       | Clean recorded events for the current directory          |
+| `:AgentTallyCleanAll`    | Clean all recorded events                                |
 
 ### Running the daemon standalone
 
@@ -146,19 +156,6 @@ agent-tallyd --depth 5                          # limit recursive depth
 agent-tallyd --db ~/my-events.db                # custom database location
 agent-tallyd --socket /tmp/my.sock              # custom socket path
 ```
-
-### Dashboard keybindings
-
-| Key         | Action                                          |
-|-------------|-------------------------------------------------|
-| `q` / `Esc` | Close dashboard                                 |
-| `r`         | Refresh data                                    |
-| `G`         | Grep / filter entries                           |
-| `Enter`     | Drill into detail (event, file, or full table)  |
-| `Backspace` | Go back to previous view                        |
-| `Ctrl-j`    | Next entry                                      |
-| `Ctrl-k`    | Previous entry                                  |
-| `H`         | Generate heatmap (scope → agent → metric)       |
 
 ### Configuration
 

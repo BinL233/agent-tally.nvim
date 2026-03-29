@@ -95,12 +95,9 @@ local function build_api_rows(events, token_summaries)
   for _, ts in ipairs(token_summaries or {}) do
     if ts.agent then
       token_by_agent[ts.agent] = ts
-    end
-  end
-
-  for _, ts in ipairs(token_summaries or {}) do
-    if ts.agent and not by[ts.agent] then
-      by[ts.agent] = { count = 0 }
+      if not by[ts.agent] then
+        by[ts.agent] = { count = 0 }
+      end
     end
   end
 
@@ -143,36 +140,27 @@ local function build_api_rows(events, token_summaries)
   return rows
 end
 
---- By-process I/O token breakdown table (estimated from file writes).
---- Pass shared_widths to align columns with the API token table.
-function M.by_process(events, shared_widths)
-  local rows = build_io_rows(events)
-  local lines, hdr, sep = u.align(rows, { "l", "r", "r", "r", "r" }, shared_widths)
-  local hls = {}
+--- Render both process tables (API tokens + I/O tokens) with shared column widths.
+--- Builds each row set once. Returns (api_lines, api_hls, io_lines, io_hls).
+function M.process_tables(events, token_summaries)
+  local alignments = { "l", "r", "r", "r", "r" }
+  local api_rows = build_api_rows(events, token_summaries)
+  local io_rows  = build_io_rows(events)
+  local widths   = u.compute_widths(api_rows, io_rows)
 
-  table.insert(hls, { hdr, 0, -1, "AgentTallySection3" })
-  table.insert(hls, { sep, 0, -1, "AgentTallySection3" })
+  local api_lines, api_hdr, api_sep = u.align(api_rows, alignments, widths)
+  local api_hls = {
+    { api_hdr, 0, -1, "AgentTallySection3" },
+    { api_sep, 0, -1, "AgentTallySection3" },
+  }
 
-  return lines, hls
-end
+  local io_lines, io_hdr, io_sep = u.align(io_rows, alignments, widths)
+  local io_hls = {
+    { io_hdr, 0, -1, "AgentTallySection3" },
+    { io_sep, 0, -1, "AgentTallySection3" },
+  }
 
---- By-process actual API token table (from query-tokens).
---- Claude and Copilot show real token counts; other agents show "-".
---- Pass shared_widths to align columns with the I/O token table.
-function M.by_process_tokens(events, token_summaries, shared_widths)
-  local rows = build_api_rows(events, token_summaries)
-  local lines, hdr, sep = u.align(rows, { "l", "r", "r", "r", "r" }, shared_widths)
-  local hls = {}
-
-  table.insert(hls, { hdr, 0, -1, "AgentTallySection3" })
-  table.insert(hls, { sep, 0, -1, "AgentTallySection3" })
-
-  return lines, hls
-end
-
---- Shared column widths for the two purple process tables.
-function M.process_table_widths(events, token_summaries)
-  return u.compute_widths(build_api_rows(events, token_summaries), build_io_rows(events))
+  return api_lines, api_hls, io_lines, io_hls
 end
 
 --- Per-file token breakdown table.
